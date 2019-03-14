@@ -1,4 +1,4 @@
-# ArduinO'Clock
+# ArduinO'ClocK
 A simple clock without RTC, based on:
   - 1 x Arduino Nano
   - 4 x MAX7219 8x8 Led Matrix
