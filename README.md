@@ -16,3 +16,8 @@ It is using the library <LEDMatrixDriver.hpp> by Bartosz Bielawski. This library
 It is displaying digits with sliding effect and many options can be set, like design, font types...
 
 A DS3231 RTC module can be added easily, to preserve time/ date settings and to have accurate calendar.
+
+TODO
+  - add the RLD (Resistor Light Dependent)
+  - add settings management, for alarms too
+  - add the music for the alarm (hope tpo manage 2 voices for pretty sound)
