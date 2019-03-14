@@ -988,14 +988,29 @@ void ShowOptions(byte flag)
 
 void ShowWelcome()
 {
-  setFont(*FONT_EPAC);
-  byte* pLogo = FONT_EPAC;
+  byte* pLogo = EPACLOGO;
   byte  i     = 24;
   MAX.clear();
   while (i--) MAX.setColumn(4 + i, pgm_read_byte_near(pLogo + i));
   //ReverseScreen();
   MAX.display();
   delay(3000);
+  
+  byte  x       = 40;
+  byte* pSprite = *PACMAN;
+  byte  spriteN = 0;
+  byte  dir     = 1;
+  while (x--)
+  {
+    byte  idx = 9;
+    while (idx--) MAX.setColumn(x - 8 + idx, pgm_read_byte_near(pSprite + spriteN * 9 + idx));
+    if      (spriteN == 3) dir = - 1;
+    else if (spriteN == 0) dir =   1;
+    spriteN = spriteN + dir;
+    MAX.display();
+    delay(150);
+  }
+  delay(1000);
 
   //setFont(*FONT_TINY);
   //setFont(*FONT_ALPHA);
