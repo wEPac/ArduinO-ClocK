@@ -90,15 +90,15 @@ LEDMatrixDriver MAX(NB_MATRIX, CS_PIN, REVERSED);
 
 
 //--- Date Var
-byte DateDoW        =  1;
-byte DateDay        =  1;
-byte DateMonth      =  7;
+byte DateDoW        =  3;     // 0:monday
+byte DateDay        =  14;
+byte DateMonth      =  2;     // 0:january
 int  DateYear       =  2019;
 
 
 //--- Time Var
-byte TimeHours10    =  0;
-byte TimeHours1     =  8;
+byte TimeHours10    =  2;
+byte TimeHours1     =  3;
 byte TimeMinutes10  =  5;
 byte TimeMinutes1   =  7;
 byte TimeSeconds10  =  0;
@@ -408,16 +408,16 @@ void ShowWelcome()
   //setFont(*FONT_NARROW);
   //setFont(*FONT_DIGITAL);
 
+  setFont(*FONT_ALPHA);
+  ScrollText("ArduinO' ClocK", 1);
   setFont(*FONT_TINY);
-  ScrollText("ARDUINO'CLOCK", (8 - FontHeight) / 2);
-  ScrollText("A SAMPLE... FOR FUN !", 8 - FontHeight);
-
+  ScrollText("A SAMPLE... FOR FUN !", (8 - FontHeight) / 2);
   setFont(*FONT_ALPHA);
 }
 
 void ShowDate()
 {
-  String space    = String("  ");
+  String space    = String("   ");
   String sDoW[]   = {"Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"};
   String sMonth[] = {"janvier", convertText("février"), "mars", "avril", "mai", "juin",
                      "juillet", convertText("août"), "septembre", "octobre", "novembre", convertText("décembre")
@@ -436,13 +436,14 @@ void ShowTemp()
   temperature     -= temp10;
   temperature     *= 10;
   int    temp1     = int(temperature);
-  String text      = "Temp  ";
+  String text      = "Temp   ";
   if (minus) text += "-";
   text            += String(temp10) + "." + String(temp1) + convertText("°C");
 
   ScrollText(text, 0);
 }
 
+/*
 void testText()
 {
   byte   val     = 27;
@@ -479,6 +480,7 @@ void testText()
   while (counter--) ScrollText(text, (8 - FontHeight) / 2); // scroll text at height center
   delay(10000);
 }
+//*/
 
 void setFont(byte* font_name)
 {
@@ -691,7 +693,25 @@ void ComputeTime(byte full)
     TimeFlag     |= 0x30;
     LastHours1    = TimeHours1;
     LastHours10   = TimeHours10;
+    DateDoW       = (++DateDoW) % 7;
+    DateDay++;
   }
+
+  // ======> here, using a DS36231 RTC, we should check date at midnight to adjust <======
+  if ( (DateDay >= 28 && DateMonth == 1 && (DateMonth % 4) != 0)
+    || (DateDay >= 29 && DateMonth == 1)
+    || (DateDay >= 30 && (DateMonth == 3 || DateMonth == 5 || DateMonth == 8 || DateMonth == 10))
+    || (DateDay >= 31))
+  {
+    DateDay = 1;
+    DateMonth++;
+  }
+  if (DateMonth >= 12)
+  {
+    DateMonth = 0;
+    DateYear++;
+  }
+  // ======> here, using a DS36231 RTC, we should check date at midnight to adjust <======
 }
 
 void ShowTime(byte flag)
