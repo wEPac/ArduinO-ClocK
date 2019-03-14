@@ -693,8 +693,11 @@ void ComputeTime(byte full)
     TimeFlag     |= 0x30;
     LastHours1    = TimeHours1;
     LastHours10   = TimeHours10;
-    DateDoW       = (++DateDoW) % 7;
-    DateDay++;
+    if (full)
+    {
+      DateDoW       = (++DateDoW) % 7;
+      DateDay++;
+    }
   }
 
   // ======> here, using a DS36231 RTC, we should check date at midnight to adjust <======
@@ -704,12 +707,18 @@ void ComputeTime(byte full)
     || (DateDay >= 31))
   {
     DateDay = 1;
-    DateMonth++;
+    if (full)
+    {
+      DateMonth++;
+    }
   }
   if (DateMonth >= 12)
   {
     DateMonth = 0;
-    DateYear++;
+    if (full)
+    {
+      DateYear++;
+    }
   }
   // ======> here, using a DS36231 RTC, we should check date at midnight to adjust <======
 }
