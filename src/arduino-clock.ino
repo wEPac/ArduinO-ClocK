@@ -45,6 +45,23 @@
         void     scroll( scrollDirection direction );
             scrollUp = 0, scrollDown, scrollLeft, scrollRight
             ex: nnn.scroll(LEDMatrixDriver::scrollDirection::scrollDown)
+      //frameBuffer organisation:
+        
+        Buffer byte #     rowY #    columnX #       module #
+        -----------------------------------------------------
+            0             0         0~7             0
+            1             0         8~15            1
+            ...
+            n-1           0         8*n-1~8*n+6     n-1
+            -------------------------------------------------
+            n             1         0~7             0
+            n+1           1         8~15            1
+            ...
+            2n-1          1         8*n-1~8*n+6     n-1
+            -------------------------------------------------
+            ...
+        -----------------------------------------------------
+            
 
    There are 2 different fonts, they are not compatible. One (Digit) is to print
    the time with vertical slide show, one (Alpha) is to print the text. Both are
@@ -111,10 +128,10 @@ byte TimeFlag;                // to know what digit changed and so, we must disp
 #define ALARM_MAX      30      // how long we ring in s (shouldnt be < 5s)
 byte Alarm1Flag     = true;   // set alarm 1, on:true / off:false
 byte Alarm2Flag     = false;  // set alarm 2, on:true / off:false
-byte AlarmHours10   =  0;
-byte AlarmHours1    =  1;
-byte AlarmMinutes10 =  2;
-byte AlarmMinutes1  =  9;
+byte AlarmHours10   =  2;
+byte AlarmHours1    =  3;
+byte AlarmMinutes10 =  5;
+byte AlarmMinutes1  =  8;
 byte AlarmSeconds10;
 byte AlarmSeconds1;
 
@@ -179,9 +196,9 @@ byte Scroll_Test    = true;   // flag to scroll text or not
 byte* pFont;                  // pointer for current font
 byte FontWidth;               // current font dimension
 byte FontHeight;
-//int  TextWidth;               // current text dimension
-//int  TextLength;
 
+//--- About buffer
+byte* pBuffer;                // frameBuffer address
 
 
 //-----------------------------------------------------------------------
@@ -199,6 +216,7 @@ void setup()
   pinMode(PIN_BUZZER,   OUTPUT);
 
   //--- set Led Matrix on
+  pBuffer = MAX.getFrameBuffer();
   ClearScreen();
   MAX.setIntensity(Intensity);
   MAX.setEnabled(true);
@@ -218,7 +236,7 @@ void loop()
 
   ComputeTime(true);              // computes new digits and set TimeFlag for them
 
-
+  
   if (Alarm1Flag == 1)         // check if we must ring for the alarm
   {
     if ((AlarmHours10 == TimeHours10) && (AlarmHours1 == TimeHours1)
@@ -228,6 +246,13 @@ void loop()
       digitalWrite(PIN_BUZZER, HIGH); // ===> START the Alarm
       Alarm1Flag++;
     }
+  }
+
+  // speed up to reach the time after a busy period (ie displaying alarm or date)
+  if ((unsigned long)(millis() - PreviousMillis) > 1000)
+  {
+    TimeFlag       = 0xFF;  // force to show all digits (not only those they changed)
+    goto endLoop;
   }
 
   // set flag, used to prevent duplicate actions, see below...
@@ -321,6 +346,7 @@ void loop()
     currentMillis = millis();
   }
 
+  endLoop:
   //---> set new time ref => + 1s
   PreviousMillis += 1000; // we wont use millis() here to preserve our RTC
   LastSeconds1    = TimeSeconds1;
@@ -335,6 +361,11 @@ void loop()
 //-----------------------------------------------------------------------
 
 
+byte* segmentBuffer(byte coordX, byte coordY)
+{
+  if (REVERSED) coordY = 7 ^ coordY;
+  return pBuffer + (coordY * NB_MATRIX) + (coordX >> 3);
+}
 
 void ClearScreen()
 {
@@ -354,17 +385,24 @@ void FillScreen(byte mask1, byte mask2)
 
 void ReverseScreen()
 {
-  byte *pBuffer = MAX.getFrameBuffer();
-  byte n        = NB_MATRIX;
-  while (n--)
-  {
-    ;
-  }
+  int idx = 8 * NB_MATRIX;
+  while (idx--) pBuffer[idx] ^= 0xFF;
 }
 
 void DrawPixel(byte coordX, byte coordY, byte isShown)
 {
   MAX.setPixel(coordX, coordY, isShown);
+
+  //byte* pSegment = segmentBuffer(coordX, coordY);
+  //coordX = 7 & coordX; if (!REVERSED) coordX = 7 ^ coordX;
+  //if (isShown) *pSegment |=  (1 << coordX);
+  //else         *pSegment &= ~(1 << coordX);
+}
+
+byte setRow(byte coordY, byte mask)
+{
+  //uint8_t* getFrameBuffer() const {return frameBuffer;}
+  ;
 }
 
 void DrawLineH(byte coordX, byte coordY, byte len, byte isShown)
@@ -393,68 +431,23 @@ void DrawSquareFilled(byte coordX, byte coordY, byte lenX, byte lenY, byte isSho
   while (lenY--) DrawLineH(coordX, coordY + lenY, lenX, isShown);
 }
 
-void ShowWelcome()
-{
-  setFont(*FONT_EPAC);
-  byte* pLogo = FONT_EPAC;
-  byte  i     = 24;
-  MAX.clear();
-  while (i--) MAX.setColumn(4 + i, pgm_read_byte_near(pLogo + i));
-  MAX.display();
-  delay(3000);
 
-  //setFont(*FONT_TINY);
-  //setFont(*FONT_ALPHA);
-  //setFont(*FONT_NARROW);
-  //setFont(*FONT_DIGITAL);
 
-  setFont(*FONT_ALPHA);
-  ScrollText("ArduinO' ClocK", 1);
-  setFont(*FONT_TINY);
-  ScrollText("A SAMPLE... FOR FUN !", (8 - FontHeight) / 2);
-  setFont(*FONT_ALPHA);
-}
+//-----------------------------------------------------------------------
+// Text functions
+//-----------------------------------------------------------------------
 
-void ShowDate()
-{
-  String space    = String("   ");
-  String sDoW[]   = {"Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"};
-  String sMonth[] = {"janvier", convertText("février"), "mars", "avril", "mai", "juin",
-                     "juillet", convertText("août"), "septembre", "octobre", "novembre", convertText("décembre")
-                    };
-  String text     = sDoW[DateDoW] + space + String(DateDay) + space + sMonth[DateMonth] + space + String(DateYear);
 
-  ScrollText(text, 0);
-}
-
-void ShowTemp()
-{
-  float  temperature = -23.6;
-  byte   minus     = false; if (temperature < 0.0) minus = true;
-  temperature      = abs(temperature);
-  int    temp10    = int(temperature);
-  temperature     -= temp10;
-  temperature     *= 10;
-  int    temp1     = int(temperature);
-  String text      = "Temp   ";
-  if (minus) text += "-";
-  text            += String(temp10) + "." + String(temp1) + convertText("°C");
-
-  ScrollText(text, 0);
-}
 
 /*
 void testText()
 {
   byte   val     = 27;
   String text    = "Gn" + String(char(128)) + String(char(128));
-  text += ", Jeudi 15 Aout 1719, Dimanche 12 Septembre 2019, 24.03.2245, ";
-  text += String(val) + String(char(127)) + "C";
 
-  text = "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_'abcdefghijklmnopqrstuvwxyz{|}~" + String(char(128)) + String(char(127));
-
-  //text = setCharset(String("°àâèéêëîïùû"));
-  text = "Gnnn" + convertText("ééééé... aïe!");
+  text = String(val) + "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_'abcdefghijklmnopqrstuvwxyz{|}~" + String(char(128)) + String(char(127));
+  text = convertText(String("°àâèéêëîïùû"));
+  //text = "Gnnn" + convertText("ééééé... aïe!");
   
   randomSeed(analogRead(0));
   byte disp = random(40) / 10;
@@ -498,7 +491,7 @@ void ScrollText(String text, byte coordY)
   int text_width  = getTextWidth(text);
   int xPos        = MATRIX_WIDTH;
   int idx         = text_width + MATRIX_WIDTH;
-  unsigned long scrollTimerStamp = SCROLL_DELAY + millis();
+  unsigned long scrollTimerStamp = (unsigned long)(SCROLL_DELAY + millis());
 
   MAX.clear();
   while (idx--)
@@ -537,9 +530,45 @@ void setText(String text, int text_length, int coordX, int coordY)
         }
       }
     }
-
+    
     coordX += char_width + CHAR_SPACING;
   }
+}
+
+// calculates character width - ignoring whitespace
+int getCharWidth(byte ascII, byte* pChar)
+{
+  if (ascII == 0) return SPACE_WIDTH;   // " " space char
+
+  byte char_width = FontWidth;
+  while (char_width--)                  // check 1st not empty byte
+  {
+    //if (font[ascII][char_width])
+    if (pgm_read_byte_near(pChar + char_width))
+    {
+      char_width++;
+      break;
+    }
+  }
+  if      (ascII ==  1) char_width++;   // give extra spacing for "!"
+  else if (ascII == 14) char_width++;   // give extra spacing for "."
+
+  return char_width;
+}
+
+// calculates the text width using variable character width and whitespace
+int getTextWidth(String text)
+{
+  int text_width = 0;
+  int text_idx   = text.length();
+  while (text_idx--)
+  {
+    byte  ascII      = text[text_idx] - 32;
+    byte* pChar      = pFont + FontWidth * ascII;
+    int   char_width = getCharWidth(ascII, pChar);
+    text_width      += char_width + CHAR_SPACING;
+  }
+  return text_width;
 }
 
 // Replace extended ascII char to match with our font
@@ -599,48 +628,18 @@ void giveCharset()
 }
 //*/
 
-// calculates character width - ignoring whitespace
-int getCharWidth(byte ascII, byte* pChar)
-{
-  if (ascII == 0) return SPACE_WIDTH;   // " " space char
-
-  byte char_width = FontWidth;
-  while (char_width--)                  // check 1st not empty byte
-  {
-    //if (font[ascII][char_width])
-    if (pgm_read_byte_near(pChar + char_width))
-    {
-      char_width++;
-      break;
-    }
-  }
-  if      (ascII ==  1) char_width++;   // give extra spacing for "!"
-  else if (ascII == 14) char_width++;   // give extra spacing for "."
-
-  return char_width;
-}
-
-// calculates the text width using variable character width and whitespace
-int getTextWidth(String text)
-{
-  int text_width = 0;
-  int text_idx   = text.length();
-  while (text_idx--)
-  {
-    byte  ascII      = text[text_idx] - 32;
-    byte* pChar      = pFont + FontWidth * ascII;
-    int   char_width = getCharWidth(ascII, pChar);
-    text_width      += char_width + CHAR_SPACING;
-  }
-  return text_width;
-}
 
 
 //-----------------------------------------------------------------------
+// Times functions - compute & display
+//-----------------------------------------------------------------------
+
 
 
 void ComputeTime(byte full)
 {
+  // full:true, switch upon 59 seconds will increase minutes
+  // false is used when we are setting time manualy
 #ifdef DEBUG
   full = true;
 #endif
@@ -727,10 +726,10 @@ void ShowTime(byte flag)
 {
   // For digit concerned by TimeFlag, we display the digit
   TimeFlag |= flag;   // can be used to force full display from each digits flag == 0xFF
-  if (flag == 0xFF) MAX.clear();
+  if (TimeFlag == 0xFF) MAX.clear();
 
-  ShowDP(true);       // display the DP
-  ShowOptions(flag);      // dispaly the line of seconds (for tiny fonts only)
+  ShowDP(true);           // display the DP
+  ShowOptions(TimeFlag);  // dispaly the line of seconds (for tiny fonts only)
 
 
   // set values and pointers for h, m, s for the next loop, so it will run faster
@@ -831,7 +830,9 @@ void ShowDigit(byte slide, byte* pNewDigit, byte* pOldDigit, byte coordX, byte c
 }
 
 
+
 //-----------------------------------------------------------------------
+
 
 
 void RunAlarm()
@@ -861,7 +862,8 @@ void RunAlarm()
         digitalWrite(PIN_BUZZER, HIGH); // ===> START the Alarm
       }
 
-      FillScreen(WHITE, WHITE);
+      //FillScreen(WHITE, WHITE);
+      ReverseScreen();
       MAX.display();
       MAX.setIntensity(INTENSITY_MAX);  // display all dots with high brightness to flash
     }
@@ -975,3 +977,66 @@ void ShowOptions(byte flag)
     DrawLineV(sign_x + 1, sign_y, 3, WHITE);
   }
 }
+
+
+
+//-----------------------------------------------------------------------
+// Message fonctions - date, temp...
+//-----------------------------------------------------------------------
+
+
+
+void ShowWelcome()
+{
+  setFont(*FONT_EPAC);
+  byte* pLogo = FONT_EPAC;
+  byte  i     = 24;
+  MAX.clear();
+  while (i--) MAX.setColumn(4 + i, pgm_read_byte_near(pLogo + i));
+  //ReverseScreen();
+  MAX.display();
+  delay(3000);
+
+  //setFont(*FONT_TINY);
+  //setFont(*FONT_ALPHA);
+  //setFont(*FONT_NARROW);
+  //setFont(*FONT_DIGITAL);
+
+  setFont(*FONT_ALPHA);
+  ScrollText("ArduinO' ClocK", 1);
+  setFont(*FONT_TINY);
+  ScrollText("A SAMPLE... FOR FUN !", (8 - FontHeight) / 2);
+  setFont(*FONT_ALPHA);
+}
+
+void ShowDate()
+{
+  // use convertText() to manage accent and special chars alike "°"
+  String space    = String("   ");
+  String sDoW[]   = {"Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"};
+  String sMonth[] = {"janvier", convertText("février"), "mars", "avril", "mai", "juin",
+                     "juillet", convertText("août"), "septembre", "octobre", "novembre", convertText("décembre")
+                    };
+  String text     = sDoW[DateDoW] + space + String(DateDay) + space + sMonth[DateMonth] + space + String(DateYear);
+
+  ScrollText(text, 0);
+}
+
+void ShowTemp()
+{
+  // use convertText() to manage accent and special chars alike "°"
+  float  temperature = -23.6;
+  byte   minus     = false; if (temperature < 0.0) minus = true;
+  temperature      = abs(temperature);
+  int    temp10    = int(temperature);
+  temperature     -= temp10;
+  temperature     *= 10;
+  int    temp1     = int(temperature);
+  String text      = "Temp   ";
+  if (minus) text += "-";
+  text            += String(temp10) + "." + String(temp1) + convertText("°C");
+
+  ScrollText(text, 0);
+}
+
+
