@@ -77,7 +77,7 @@
 
 
 #include <avr/pgmspace.h>
-#include <LEDMatrixDriver.hpp>
+#include "LEDMatrixDriver.hpp"
 
 #include "fonts.h"
 
@@ -154,7 +154,7 @@ byte Intensity      = 0;      // 0~7
 //byte FontType       = 2;      // 0~3, 0=analog big, 1=digital big, 2=analog tiny, 3=digital tiny
 
 #define DISPLAY_MAX   6;      // how many design we have
-byte    DisplayN    = 4;      // index to show design from array Design[][] settings
+byte    DisplayN    = 0;      // index to show design from array Design[][] settings
 byte    FontN;                // index for different font in a design kind
 // Design[][] contains settings for each kind of display, each row is a kind:
 //       0      fnt#,               how many fonts we have in this design (rollup, fonts must be in right order)
@@ -173,9 +173,9 @@ byte    FontN;                // index for different font in a design kind
 //                                    x,y, coord for the option
 //      28      curF,               current font number used for this design
 byte  Design[][29] = // DisplayN will give the font and coords
-{ //fnt#,font,h10xy,h1xy, font, m10xy,  m1xy, font, s10xy,  s1xy, dotW, H,  x,y1,y2,   al1xy, al2xy, opt,x, y
+{ //fnt#,font,h10xy,h1xy, font, m10xy,  m1xy, font, s10xy,  s1xy, dotW, H,  x,y1,y2,   al1xy, al2xy,  opt, x,y,curF,
   //         2      4        6      8     10        12     14       16     18    20       22     24         26    28
-  {4,    0,  0, 0,  8, 0,    0, 18, 0, 26, 0,   -1,  0, 0,  0, 0,    2, 2, 15, 1, 4,   15, 7, 16, 7,    0,  0, 0, 0}, // h:m
+  {4,    0,  0, 0,  8, 0,    0, 18, 0, 26, 0,   -1,  0, 0,  0, 0,    2, 2, 15, 1, 4,   15, 7, 16, 7,    0,  0, 0, 2}, // h:m
   {4,   -1,  0, 0,  0, 0,    0,  0, 0,  8, 0,    0, 18, 0, 26, 0,    2, 2, 15, 1, 4,   15, 7, 16, 7,    0,  0, 0, 0}, // m:s
   {2,    6,  0, 0,  5, 0,    6, 12, 0, 17, 0,   10, 23, 2, 28, 2,    1, 2, 10, 1, 4,   30, 0, 31, 0,    0,  0, 0, 1}, // h:m:s
   {2,    6,  0, 0,  5, 0,    6, 12, 0, 17, 0,   -1,  0, 0,  0, 0,    1, 2, 10, 1, 4,   30, 0, 31, 0,    2, 25, 7, 1}, // h:m:T
@@ -268,15 +268,15 @@ void loop()
   {
     ShowDate();
     change_flag  = 0x00;    // when parity fill screen, dont display DP, lock settings
-    ShowTime(0xFF);
+    ShowTime(0xFF, true);
   }
   else if (!(TimeMinutes1 & 0x01) && TimeSeconds10 == 3 && TimeSeconds1 == 0)
   {
     ShowTemp();
     change_flag  = 0x00;    // when parity fill screen, dont display DP, lock settings
-    ShowTime(0xFF);
+    ShowTime(0xFF, true);
   }
-  else ShowTime(0x00);  // ===> show casual time (only new digits)
+  else ShowTime(0x00, true);  // ===> show casual time (only new digits)
 
 
 
@@ -311,7 +311,7 @@ void loop()
       DisplayN    %= DISPLAY_MAX;
       //if (FontN >= Design[DisplayN][ 0]) FontN = 0; // if current font is out of range, reset font
       FontN        = Design[DisplayN][28]; // restore font
-      ShowTime(0xFF);       // show current setting
+      ShowTime(0xFF, true);       // show current setting
     }
 
     //--- Adj Font type
@@ -321,7 +321,7 @@ void loop()
       FontN++;
       FontN       %= Design[DisplayN][ 0];
       Design[DisplayN][28] = FontN;
-      ShowTime(0xFF);       // show current setting
+      ShowTime(0xFF, true);       // show current setting
     }
 
     //--- Adj Time Value
@@ -331,7 +331,7 @@ void loop()
       LastMinutes1 = TimeMinutes1;
       TimeMinutes1++;
       ComputeTime(false);
-      ShowTime(0x04);       // show current setting
+      ShowTime(0x04, true);       // show current setting
     }
 
     if ((change_flag & 0x20) && digitalRead(SET_HOUR) == LOW)
@@ -340,7 +340,7 @@ void loop()
       LastHours1   = TimeHours1;
       TimeHours1++;
       ComputeTime(false);
-      ShowTime(0x10);       // show current setting
+      ShowTime(0x10, true);       // show current setting
     }
 
     currentMillis = millis();
@@ -510,8 +510,8 @@ void setText(String text, int text_length, int coordX, int coordY)
   {
     if (coordX > MATRIX_WIDTH) return;  // stop if char is outside visible area
 
-    byte  ascII      = text[i] - 31;     // font starts with " " space char
-    byte* pChar      = pFont + FontWidth * ascII;
+    byte  ascII      = text[i] - 32;     // font starts with " " space char
+    byte* pChar      = pFont + FontWidth * (ascII + 1);
     int   char_width = getCharWidth(ascII, pChar);
 
     // only draw if char is visible
@@ -538,10 +538,11 @@ void setText(String text, int text_length, int coordX, int coordY)
 // calculates character width - ignoring whitespace
 int getCharWidth(byte ascII, byte* pChar)
 {
-  if (ascII == 0) return SPACE_WIDTH;   // " " space char
-
   byte char_width = FontWidth;
-  while (char_width--)                  // check 1st not empty byte
+  
+  if (ascII == 0) return char_width / 2;   // " " space char
+  
+  while (char_width--)                  // check for the 1st byte is not empty
   {
     //if (font[ascII][char_width])
     if (pgm_read_byte_near(pChar + char_width))
@@ -564,7 +565,7 @@ int getTextWidth(String text)
   while (text_idx--)
   {
     byte  ascII      = text[text_idx] - 32;
-    byte* pChar      = pFont + FontWidth * ascII;
+    byte* pChar      = pFont + FontWidth * (ascII + 1);
     int   char_width = getCharWidth(ascII, pChar);
     text_width      += char_width + CHAR_SPACING;
   }
@@ -636,13 +637,20 @@ void giveCharset()
 
 
 
-void ComputeTime(byte full)
+void ComputeTime(bool full)
 {
   // full:true, switch upon 59 seconds will increase minutes
   // false is used when we are setting time manualy
 #ifdef DEBUG
   full = true;
 #endif
+
+  if (!full)    // prevent time to change when we re setting it, allow to set s to zero as well
+  {
+    TimeSeconds1  = TimeSeconds10 = 0;
+    LastSeconds1  = 9;
+    LastSeconds10 = 5;
+  }
 
   if (TimeSeconds1  >= 10)
   {
@@ -722,10 +730,13 @@ void ComputeTime(byte full)
   // ======> here, using a DS36231 RTC, we should check date at midnight to adjust <======
 }
 
-void ShowTime(byte flag)
+void ShowTime(byte flag, bool showIt)
 {
   // For digit concerned by TimeFlag, we display the digit
-  TimeFlag |= flag;   // can be used to force full display from each digits flag == 0xFF
+  // flag:0xFF force full display from each digits
+  // showIt:true display the result, false it only fill the frameBuffer
+  
+  TimeFlag |= flag;
   if (TimeFlag == 0xFF) MAX.clear();
 
   ShowDP(true);           // display the DP
@@ -764,7 +775,7 @@ void ShowTime(byte flag)
   if      (TimeHours10 == 0) pNew_h10 = 0xFF; // display empty char
   else if (LastHours10 == 0) pOld_h10 = 0xFF; // display empty char
 
-  byte slide = 1; if (SlideShow) slide = 8;
+  byte slide = 1; if (SlideShow && TimeFlag != 0xFF) slide = 8;
   unsigned long tempo;
   while (slide--)
   {
@@ -790,7 +801,7 @@ void ShowTime(byte flag)
         ShowDigit(slide, pNew_h10, pOld_h10, Design[DisplayN][ 2], Design[DisplayN][ 3], width_h, height_h);
     }
 
-    MAX.display();
+    if (showIt) MAX.display();
 
     tempo = millis();
     if (slide) while ((unsigned long)(millis() - tempo) < SLIDE_SPEED) bit(8);
@@ -843,7 +854,7 @@ void RunAlarm()
     Alarm1Flag = false;
     digitalWrite(PIN_BUZZER, LOW);
     MAX.setIntensity(Intensity);
-    ShowTime(0xFF);     // show time (all digits)
+    ShowTime(0xFF, true);     // show time (all digits)
     SlideShow  = LastSlideShow;
   }
   else if (Alarm1Flag > 1)                                 // ===> RUN the Alarm
@@ -851,7 +862,7 @@ void RunAlarm()
     if (Alarm1Flag & 0x01)   // when parity show time (all digits)
     {
       MAX.setIntensity(Intensity);
-      ShowTime(0xFF);
+      ShowTime(0xFF, true);
     }
     else
     {
@@ -1020,14 +1031,40 @@ void ShowWelcome()
   setFont(*FONT_ALPHA);
   ScrollText("ArduinO' ClocK", 1);
   setFont(*FONT_TINY);
-  ScrollText("A SAMPLE... FOR FUN !", (8 - FontHeight) / 2);
+  ScrollText("A SAMPLE... FOR FUN!", (8 - FontHeight) / 2);
   setFont(*FONT_ALPHA);
+}
+
+void StartMessage()
+{
+  byte   counter  = NB_MATRIX * 8;
+  while (counter--)
+  {
+    MAX.scroll(LEDMatrixDriver::scrollDirection::scrollLeft);
+    MAX.display();
+    delay(50);
+  }
+}
+void StopMessage()
+{
+  byte   counter  = NB_MATRIX * 8;
+  while (counter-- > 1)
+  {
+    ShowTime(0xFF, false);
+    byte n = counter;
+    while (n--) MAX.scroll(LEDMatrixDriver::scrollDirection::scrollRight);
+    MAX.display();
+    delay(50);
+  }
+  TimeFlag != 0xFF;
 }
 
 void ShowDate()
 {
+  StartMessage();
+  
   // use convertText() to manage accent and special chars alike "°"
-  String space    = String("   ");
+  String space    = String(" ");
   String sDoW[]   = {"Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"};
   String sMonth[] = {"janvier", convertText("février"), "mars", "avril", "mai", "juin",
                      "juillet", convertText("août"), "septembre", "octobre", "novembre", convertText("décembre")
@@ -1035,10 +1072,13 @@ void ShowDate()
   String text     = sDoW[DateDoW] + space + String(DateDay) + space + sMonth[DateMonth] + space + String(DateYear);
 
   ScrollText(text, 0);
+  StopMessage();
 }
 
 void ShowTemp()
 {
+  StartMessage();
+  
   // use convertText() to manage accent and special chars alike "°"
   float  temperature = -23.6;
   byte   minus     = false; if (temperature < 0.0) minus = true;
@@ -1047,11 +1087,12 @@ void ShowTemp()
   temperature     -= temp10;
   temperature     *= 10;
   int    temp1     = int(temperature);
-  String text      = "Temp   ";
+  String text      = "Temp ";
   if (minus) text += "-";
   text            += String(temp10) + "." + String(temp1) + convertText("°C");
 
   ScrollText(text, 0);
+  StopMessage();
 }
 
 
