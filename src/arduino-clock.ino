@@ -117,9 +117,8 @@ byte    TimeFlag;               // to know what digit changed and so, we must di
 byte    DateN          =  1;    // 0:alpha, 1:DD-MM-YYYY, 2:MM-DD-YYYY
 byte    DateDoW        =  3;    // 0:monday
 byte    DateDay        =  14;
-byte    DateMonth      =  2;    // 0:january
+byte    DateMonth      =  1;    // 0:january
 int     DateYear       =  2019;
-
 
 //--- Time
 byte    TimeHours10    =  2;
@@ -158,10 +157,10 @@ byte    LastSeconds1   =  0;
 #define INTENSITY_MAX 8         // 0~15 but upon 7 there is no real change
 byte    Intensity     = 0;      // 0~7
 
-#define DISPLAY_MAX   6;        // how many design we have
-byte    DisplayN      = 0;      // index to show design from array Design[][] settings
+#define DISPLAY_MAX   6         // how many design we have
+byte    DisplayN      = 0;      // index to show design from array DESIGN[][] settings
 byte    FontN;                  // index for different font in a design kind
-// Design[][] contains settings for each kind of display, each row is a kind:
+// DESIGN[][] contains settings for each kind of display, each row is a kind:
 //       0      fnt#,               how many fonts we have in this design (rollup, fonts must be in right order)
 //       1      font,               hour:           1st font of a kind (-1 to hide this field)
 //       2-3    h10xy,              hour:           x, y coordinates for 1st digit 10
@@ -176,18 +175,20 @@ byte    FontN;                  // index for different font in a design kind
 //                                    1:timeline
 //                                    2:Temperature
 //                                    x,y, coord for the option
-//      28      curF,               current font number used for this design
-byte    Design[][29]  =         // DisplayN will give the font and coords
+#define DESIGN_MAX  28
+const byte DESIGN[][DESIGN_MAX] PROGMEM =  // DisplayN will give the font and coords
 { //fnt#,font,h10xy,h1xy, font, m10xy,  m1xy, font, s10xy,  s1xy, dotW, H,  x,y1,y2,   al1xy, al2xy,  opt, x,y,curF,
   //         2      4        6      8     10        12     14       16     18    20       22     24         26    28
-  {4,    0,  0, 0,  8, 0,    0, 18, 0, 26, 0,   -1,  0, 0,  0, 0,    2, 2, 15, 1, 4,   15, 7, 16, 7,    0,  0, 0, 2}, // h:m
-  {4,   -1,  0, 0,  0, 0,    0,  0, 0,  8, 0,    0, 18, 0, 26, 0,    2, 2, 15, 1, 4,   15, 7, 16, 7,    0,  0, 0, 0}, // m:s
-  {2,    6,  0, 0,  5, 0,    6, 12, 0, 17, 0,   10, 23, 2, 28, 2,    1, 2, 10, 1, 4,   30, 0, 31, 0,    0,  0, 0, 1}, // h:m:s
-  {2,    6,  0, 0,  5, 0,    6, 12, 0, 17, 0,   -1,  0, 0,  0, 0,    1, 2, 10, 1, 4,   30, 0, 31, 0,    2, 25, 7, 1}, // h:m:T
-  {2,   14,  1, 1,  8, 1,   14, 18, 1, 25, 1,   -1,  0, 0,  0, 0,    2, 1, 15, 2, 4,   15, 0, 16, 0,    1,  0, 7, 0}, // h:m + tL
-  {2,   -1,  0, 0,  0, 0,   14,  1, 1,  8, 1,   14, 18, 1, 25, 1,    2, 1, 15, 2, 4,   15, 0, 16, 0,    1,  0, 7, 0}, // m:s + tL
+  {4,    0,  0, 0,  8, 0,    0, 18, 0, 26, 0,   -1,  0, 0,  0, 0,    2, 2, 15, 1, 4,   15, 7, 16, 7,    0,  0, 0}, // 0 h:m
+  {4,   -1,  0, 0,  0, 0,    0,  0, 0,  8, 0,    0, 18, 0, 26, 0,    2, 2, 15, 1, 4,   15, 7, 16, 7,    0,  0, 0}, // 1 m:s
+  {2,    6,  0, 0,  5, 0,    6, 12, 0, 17, 0,   10, 23, 2, 28, 2,    1, 2, 10, 1, 4,   30, 0, 31, 0,    0,  0, 0}, // 2 h:m:s
+  {2,    6,  0, 0,  5, 0,    6, 12, 0, 17, 0,   -1,  0, 0,  0, 0,    1, 2, 10, 1, 4,   30, 0, 31, 0,    2, 25, 7}, // 3 h:m:T
+  {2,   14,  1, 1,  8, 1,   14, 18, 1, 25, 1,   -1,  0, 0,  0, 0,    2, 1, 15, 2, 4,   15, 0, 16, 0,    1,  0, 7}, // 4 h:m + tL
+  {2,   -1,  0, 0,  0, 0,   14,  1, 1,  8, 1,   14, 18, 1, 25, 1,    2, 1, 15, 2, 4,   15, 0, 16, 0,    1,  0, 7}, // 5 m:s + tL
 };
-
+// current font number used for a design in the array DESIGN[]
+byte    DesignFont[DISPLAY_MAX] = {2, 0, 1, 1, 0, 0}; 
+  
 //--- About Time digit
 #define SLIDE_SPEED   40        // 20~100 how much to slower digits sliding (shouldnt be slower than 20 = 1/3 s)
 byte    SlideShow     = true;   // 0~1 to change digit with or without a slide show
@@ -195,9 +196,9 @@ byte    LastSlideShow;
 
 //--- About Alpha Text
 #define SCROLL_SPEED  50        // 20~80, how to slower scrolling text
-//byte    Scroll_Text   = true;   // flag to scroll text or not
 #define SPACE_WIDTH   3         // define width of " " since code is handling whitespace
 #define CHAR_SPACING  1         // pixels between characters
+String  S_Text;                 // text to be scrolled
 byte*   pFont;                  // pointer for current font
 byte    FontWidth;              // current font dimension
 byte    FontHeight;
@@ -229,13 +230,11 @@ void setup()
 
   //testText();
   SplashScreen();
-
-  //TimeFlag       = 0xFF;      // 1st sequence, we will print each digits
-  //FontN          = Design[DisplayN][28];
+  
+  MAX.setIntensity(Intensity);
   ComputeTime(true);
   StopMessage();
   ShowTime(0xFF, true);
-  MAX.setIntensity(Intensity);
 
   PreviousMillis = millis();  // the RTC reference now
 }
@@ -262,7 +261,7 @@ void loop()
   // speed up to reach the time after a busy period (ie displaying alarm or date)
   if ((unsigned long)(millis() - PreviousMillis) > TIME_SPEED)
   {
-    TimeFlag       = 0xFF;  // force to show all digits (not only those they changed)
+    TimeFlag     = 0xFF;     // force to show all digits (not only those they changed)
     goto endLoop;
   }
 
@@ -273,21 +272,21 @@ void loop()
   if (Alarm1Flag > 1)
   {
     RunAlarm();
-    change_flag  = 0x00;    // dont display DP, lock settings
+    change_flag  = 0x00;     // dont display DP, lock settings
   }
   else if (TimeMinutes1 & 0x01 && TimeSeconds10 == 3 && TimeSeconds1 == 0)
   {
     ShowDate();
-    change_flag  = 0x00;    // when parity displays date, dont display DP, lock settings
+    change_flag  = 0x00;     // when parity displays date, dont display DP, lock settings
     ShowTime(0xFF, true);
   }
   else if (!(TimeMinutes1 & 0x01) && TimeSeconds10 == 3 && TimeSeconds1 == 0)
   {
     ShowTemp();
-    change_flag  = 0x00;    // when no parity displays temperature, dont display DP, lock settings
+    change_flag  = 0x00;     // when no parity displays temperature, dont display DP, lock settings
     ShowTime(0xFF, true);
   }
-  else ShowTime(0x00, true);  // ===> show casual time (digits accorded to TimeFlag, display time)
+  else ShowTime(0x00, true); // ===> show casual time (digits accorded to TimeFlag, display time)
 
 
 
@@ -312,35 +311,35 @@ void loop()
     {
       change_flag ^= 0x02;  // we do it once only, so we set the flag
       Intensity++;
-      Intensity %= INTENSITY_MAX;
+      Intensity   %= INTENSITY_MAX;
       MAX.setIntensity(Intensity);  // set new brightness
     }
 
     //--- Adj Display type
     if ((change_flag & 0x04) && digitalRead(SET_DISPLAY) == LOW)
     {
-      change_flag ^= 0x04;  // we do it once only, so we set the flag
+      change_flag ^= 0x04;        // we do it once only, so we set the flag
       DisplayN++;
       DisplayN    %= DISPLAY_MAX;
-      //if (FontN >= Design[DisplayN][ 0]) FontN = 0; // if current font is out of range, reset font
-      //FontN        = Design[DisplayN][28]; // restore font
       ShowTime(0xFF, true);       // show current setting
     }
 
     //--- Adj Font type
     if ((change_flag & 0x08) && digitalRead(SET_FONT) == LOW)
     {
-      change_flag ^= 0x08;  // we do it once only, so we set the flag
+      change_flag ^= 0x08;        // we do it once only, so we set the flag
       FontN++;
-      FontN       %= Design[DisplayN][ 0];
-      Design[DisplayN][28] = FontN;
+      //FontN       %= DESIGN[DisplayN][ 0];
+      //DESIGN[DisplayN][28] = FontN;
+      FontN       %= pgm_read_byte_near(DESIGN[DisplayN]);
+      DesignFont[DisplayN] = FontN;
       ShowTime(0xFF, true);       // show current setting
     }
 
     //--- Adj Time Value
     if ((change_flag & 0x10) && digitalRead(SET_MIN) == LOW)
     {
-      change_flag ^= 0x10;  // we do it once only, so we set the flag
+      change_flag ^= 0x10;        // we do it once only, so we set the flag
       LastMinutes1 = TimeMinutes1;
       TimeMinutes1++;
       ComputeTime(false);
@@ -361,10 +360,10 @@ void loop()
 
 endLoop:
   //---> set new time ref => + 1s
-  PreviousMillis += 1000; // we wont use millis() here to preserve our RTC
-  LastSeconds1    = TimeSeconds1;
-  TimeFlag       |= 0x01; // TimeSeconds1 will always increase inside the loop => flag it
-  TimeSeconds1++;         // yes yes, we re older now from 1 second!!!
+  PreviousMillis += 1000;         // we wont use millis() here to keep our RTC accurate
+  TimeFlag       |= 0x01;         // TimeSeconds1 will always increase inside the loop => flag it
+  LastSeconds1    = TimeSeconds1; // save last value for the slide show
+  TimeSeconds1++;                 // yes yes, we re older now from 1 second!!!
 }
 
 
@@ -372,6 +371,7 @@ endLoop:
 //-----------------------------------------------------------------------
 // Display functions
 //-----------------------------------------------------------------------
+
 
 
 byte* segmentBuffer(byte coordX, byte coordY)
@@ -490,20 +490,18 @@ void DrawSquareFilled(byte coordX, byte coordY, byte lenX, byte lenY, byte isSho
 
 void setFont(byte* font_name)
 {
-  //FontWidth  = font_name[0];
-  //FontHeight = font_name[1];
   FontWidth  = pgm_read_byte_near(font_name);
   FontHeight = pgm_read_byte_near(font_name + 1);
   pFont      = font_name + FontWidth;
 }
 
-//=========> display a string with scrolling, at pos Y
-void ScrollText(String text, byte coordY, bool append, bool offScreen)
+//=========> display the public String "S_Text" with scrolling, at pos Y
+void ScrollText(int coordY, bool append, bool offScreen)
 {
   // append:true    original screen is scrolled while text appears
   // offScreen:true text is scrolled until to disappear from screen
-  int text_length = text.length();
-  int text_width  = getTextWidth(text);
+  int text_length = S_Text.length();
+  int text_width  = getTextWidth();
   int xPos        = MATRIX_WIDTH;                                   // start out of screen at right
   int idx         = text_width + ((offScreen) ? MATRIX_WIDTH : 0);    // end out of screen at left
   unsigned long timerStamp = millis();
@@ -514,24 +512,25 @@ void ScrollText(String text, byte coordY, bool append, bool offScreen)
     while ((unsigned long)(millis() - timerStamp) < SCROLL_SPEED);
     timerStamp = millis();
     if (append) MAX.scroll(LEDMatrixDriver::scrollDirection::scrollLeft);
-    setText(text, text_length, xPos--, coordY);
+    setText(text_length, xPos--, coordY);
     MAX.display();
   }
+  S_Text = "";
 }
 
 // write text of the given length for the given position, into the driver buffer.
-void setText(String text, int text_length, int coordX, int coordY)
+void setText(int text_length, int coordX, int coordY)
 {
   for (int i = 0; i < text_length; i++)
   {
     if (coordX > MATRIX_WIDTH) return;  // stop if char is outside visible area
 
-    byte  ascII      = text[i] - 32;     // font starts with " " space char
+    byte  ascII      = S_Text[i] - 32;  // font starts with " " space char
     byte* pChar      = pFont + FontWidth * ascII;
     int   char_width = getCharWidth(ascII, pChar);
 
     // only draw if char is visible
-    if (coordX > - 8)
+    if (coordX > - FontWidth)
     {
       // writes char to the driver buffer by passing position (x,y), char width and char start column
       for (int iX = 0; iX < char_width + CHAR_SPACING; iX++)
@@ -556,9 +555,9 @@ int getCharWidth(byte ascII, byte* pChar)
 {
   byte char_width = FontWidth;
 
-  if (ascII == 0) return char_width / 2;   // " " space char
+  if (ascII == 0) return char_width / 2;  // " " space char
 
-  while (char_width--)                  // check for the 1st byte is not empty
+  while (char_width--)                    // check for the 1st byte is not empty
   {
     //if (font[ascII][char_width])
     if (pgm_read_byte_near(pChar + char_width))
@@ -567,23 +566,23 @@ int getCharWidth(byte ascII, byte* pChar)
       break;
     }
   }
-  if      (ascII ==  1) char_width++;   // give extra spacing for "!"
-  else if (ascII == 14) char_width++;   // give extra spacing for "."
+  if      (ascII ==  1) char_width++;     // give extra spacing for "!"
+  else if (ascII == 14) char_width++;     // give extra spacing for "."
 
   return char_width;
 }
 
-// calculates the text width using variable character width and whitespace
-int getTextWidth(String text)
+// calculates the public String "S_Text" width using variable character width and whitespace
+int getTextWidth()
 {
   int text_width = 0;
-  int text_idx   = text.length();
+  int text_idx   = S_Text.length();
   while (text_idx--)
   {
-    byte  ascII      = text[text_idx] - 32;
-    byte* pChar      = pFont + FontWidth * ascII;
-    int   char_width = getCharWidth(ascII, pChar);
-    text_width      += char_width + CHAR_SPACING;
+    byte  ascII       = S_Text[text_idx] - 32;
+    byte* pChar       = pFont + FontWidth * ascII;
+    int   char_width  = getCharWidth(ascII, pChar);
+    text_width       += char_width + CHAR_SPACING;
   }
   return text_width;
 }
@@ -597,29 +596,35 @@ String convertText(String text)
     for (byte idx = 0; idx < len; idx++)
     {
       byte val = byte(text.charAt(idx));
-      if (val == 194 || val == 195) // extended ascII
+      if      (val == 153)   text.setCharAt(idx, char(127)); // 127 = °
+      else if (val == 194 || val == 195) // extended ascII
       {
         text.remove(idx, 1);
         len--;
-        val = byte(text.charAt(idx));
-        if      (val == 176) text.setCharAt(idx, char(127)); // 127 = °
-        else if (val == 160) text.setCharAt(idx, char(128)); // 128 = à
-        else if (val == 162) text.setCharAt(idx, char(129)); // 129 = â
-        else if (val == 168) text.setCharAt(idx, char(130)); // 130 = è
-        else if (val == 169) text.setCharAt(idx, char(131)); // 131 = é
-        else if (val == 170) text.setCharAt(idx, char(132)); // 132 = ê
-        else if (val == 171) text.setCharAt(idx, char(133)); // 133 = ë
-        else if (val == 174) text.setCharAt(idx, char(134)); // 134 = î
-        else if (val == 175) text.setCharAt(idx, char(135)); // 135 = ï
-        else if (val == 185) text.setCharAt(idx, char(136)); // 136 = ù
-        else if (val == 187) text.setCharAt(idx, char(137)); // 137 = û
+        val           = byte(text.charAt(idx));
+        byte newAscII = 0;
+        switch(val)
+        {
+          case 176: newAscII = 127; break; // 127 = °
+          case 160: newAscII = 128; break; // 128 = à
+          case 162: newAscII = 129; break; // 129 = â
+          case 168: newAscII = 130; break; // 130 = è
+          case 169: newAscII = 131; break; // 131 = é
+          case 170: newAscII = 132; break; // 132 = ê
+          case 171: newAscII = 133; break; // 133 = ë
+          case 174: newAscII = 134; break; // 134 = î
+          case 175: newAscII = 135; break; // 135 = ï
+          case 185: newAscII = 136; break; // 136 = ù
+          case 187: newAscII = 137; break; // 137 = û
+        }
+        text.setCharAt(idx, char(newAscII));
       }
     }
   }
   return text;
 }
 /*
-  // A little tool to find the correspondance
+  // A little tool to find the correspondence
   void giveCharset()
   {
   Serial.begin(57600);
@@ -632,10 +637,10 @@ String convertText(String text)
   {
     byte val    = byte(text.charAt(idx));
     byte indice = 0;
-    if (val == 194 || val == 195) // extended ascII
+    if (val == 194 || val == 195) // extended ascII (composed from 2 bytes)
     {
       indice = val;
-      val = byte(text.charAt(idx +1));
+      val    = byte(text.charAt(idx +1));
       text.remove(idx, 1);
       len--;
     }
@@ -760,9 +765,12 @@ void ShowTime(byte flag, bool showIt)
 
 
   // set values and pointers for h, m, s for the next loop, so it will run faster
-  FontN          = Design[DisplayN][28];
+  //FontN          = DESIGN[DisplayN][28];
+  FontN          = DesignFont[DisplayN];
+  
   int   font_idx;
-  font_idx       = Design[DisplayN][ 1] + FontN;
+  //font_idx       = DESIGN[DisplayN][ 1] + FontN;
+  font_idx       = pgm_read_byte_near(DESIGN[DisplayN] +  1) + FontN;
   byte  width_h  = FONT_DIGIT_SIZE[font_idx][0];
   byte  height_h = FONT_DIGIT_SIZE[font_idx][1];
   font_idx      *= FONT_DIGIT_STRIDE;
@@ -771,7 +779,8 @@ void ShowTime(byte flag, bool showIt)
   byte* pOld_h1  = FONT_DIGIT[font_idx + LastHours1   ];
   byte* pNew_h1  = FONT_DIGIT[font_idx + TimeHours1   ];
 
-  font_idx       = Design[DisplayN][ 6] + FontN;
+  //font_idx       = DESIGN[DisplayN][ 6] + FontN;
+  font_idx       = pgm_read_byte_near(DESIGN[DisplayN] +  6) + FontN;
   byte  width_m  = FONT_DIGIT_SIZE[font_idx][0];
   byte  height_m = FONT_DIGIT_SIZE[font_idx][1];
   font_idx      *= FONT_DIGIT_STRIDE;
@@ -780,7 +789,8 @@ void ShowTime(byte flag, bool showIt)
   byte* pOld_m1  = FONT_DIGIT[font_idx + LastMinutes1 ];
   byte* pNew_m1  = FONT_DIGIT[font_idx + TimeMinutes1 ];
 
-  font_idx       = Design[DisplayN][11] + FontN;
+  //font_idx       = DESIGN[DisplayN][11] + FontN;
+  font_idx       = pgm_read_byte_near(DESIGN[DisplayN] + 11) + FontN;
   byte  width_s  = FONT_DIGIT_SIZE[font_idx][0];
   byte  height_s = FONT_DIGIT_SIZE[font_idx][1];
   font_idx      *= FONT_DIGIT_STRIDE;
@@ -796,26 +806,47 @@ void ShowTime(byte flag, bool showIt)
   unsigned long timerStamp = millis();
   while (slide--)
   {
-    if (Design[DisplayN][11] != 0xFF)
+    //if (DESIGN[DisplayN][11] != 0xFF)
+    if (pgm_read_byte_near(DESIGN[DisplayN] + 11) != 0xFF)
     {
       if (TimeFlag & 0x01)
-        ShowDigit(slide, pNew_s1,  pOld_s1,  Design[DisplayN][14], Design[DisplayN][15], width_s, height_s);
+        //ShowDigit(slide, pNew_s1,  pOld_s1,  DESIGN[DisplayN][14], DESIGN[DisplayN][15], width_s, height_s);
+        ShowDigit(slide, pNew_s1,  pOld_s1,
+          pgm_read_byte_near(DESIGN[DisplayN] + 14),
+          pgm_read_byte_near(DESIGN[DisplayN] + 15), width_s, height_s);
       if (TimeFlag & 0x02)
-        ShowDigit(slide, pNew_s10, pOld_s10, Design[DisplayN][12], Design[DisplayN][13], width_s, height_s);
+        //ShowDigit(slide, pNew_s10, pOld_s10, DESIGN[DisplayN][12], DESIGN[DisplayN][13], width_s, height_s);
+        ShowDigit(slide, pNew_s10, pOld_s10,
+          pgm_read_byte_near(DESIGN[DisplayN] + 12),
+          pgm_read_byte_near(DESIGN[DisplayN] + 13), width_s, height_s);
     }
-    if (Design[DisplayN][ 6] != 0xFF)
+    //if (DESIGN[DisplayN][ 6] != 0xFF)
+    if (pgm_read_byte_near(DESIGN[DisplayN] +  6) != 0xFF)
     {
       if (TimeFlag & 0x04)
-        ShowDigit(slide, pNew_m1,  pOld_m1,  Design[DisplayN][ 9], Design[DisplayN][10], width_m, height_m);
+        //ShowDigit(slide, pNew_m1,  pOld_m1,  DESIGN[DisplayN][ 9], DESIGN[DisplayN][10], width_m, height_m);
+        ShowDigit(slide, pNew_m1,  pOld_m1,
+          pgm_read_byte_near(DESIGN[DisplayN] +  9),
+          pgm_read_byte_near(DESIGN[DisplayN] + 10), width_m, height_m);
       if (TimeFlag & 0x08)
-        ShowDigit(slide, pNew_m10, pOld_m10, Design[DisplayN][ 7], Design[DisplayN][ 8], width_m, height_m);
+        //ShowDigit(slide, pNew_m10, pOld_m10, DESIGN[DisplayN][ 7], DESIGN[DisplayN][ 8], width_m, height_m);
+        ShowDigit(slide, pNew_m10, pOld_m10,
+          pgm_read_byte_near(DESIGN[DisplayN] +  7),
+          pgm_read_byte_near(DESIGN[DisplayN] +  8), width_m, height_m);
     }
-    if (Design[DisplayN][ 1] != 0xFF)
+    //if (DESIGN[DisplayN][ 1] != 0xFF)
+    if (pgm_read_byte_near(DESIGN[DisplayN] +  1) != 0xFF)
     {
       if (TimeFlag & 0x10)
-        ShowDigit(slide, pNew_h1,  pOld_h1,  Design[DisplayN][ 4], Design[DisplayN][ 5], width_h, height_h);
+        //ShowDigit(slide, pNew_h1,  pOld_h1,  DESIGN[DisplayN][ 4], DESIGN[DisplayN][ 5], width_h, height_h);
+        ShowDigit(slide, pNew_h1,  pOld_h1,
+          pgm_read_byte_near(DESIGN[DisplayN] +  4),
+          pgm_read_byte_near(DESIGN[DisplayN] +  5), width_h, height_h);
       if (TimeFlag & 0x20)
-        ShowDigit(slide, pNew_h10, pOld_h10, Design[DisplayN][ 2], Design[DisplayN][ 3], width_h, height_h);
+        //ShowDigit(slide, pNew_h10, pOld_h10, DESIGN[DisplayN][ 2], DESIGN[DisplayN][ 3], width_h, height_h);
+        ShowDigit(slide, pNew_h10, pOld_h10, 
+          pgm_read_byte_near(DESIGN[DisplayN] +  2),
+          pgm_read_byte_near(DESIGN[DisplayN] +  3), width_h, height_h);
     }
 
     if (showIt) MAX.display();
@@ -868,16 +899,14 @@ void RunAlarm()
 #define SHOW_NOTE true
   //---> Display time or alarm
   if      ((unsigned long)(millis() - AlarmMillis) > ALARM_MAX) // ===> STOP the Alarm
-    //if      (Alarm1Flag >= ALARM_MAX + 2)      // ===> STOP the Alarm
   {
     Alarm1Flag = false;
     digitalWrite(PIN_BUZZER, LOW);
     MAX.setIntensity(Intensity);
-    StartMessage();
+    if (SHOW_NOTE) StartMessage();  // stopped with notes displayed, scroll them off
     SlideShow  = LastSlideShow;
     StopMessage();
     //ShowTime(0xFF, true);     // show time (all digits, display)
-
   }
   else if (Alarm1Flag > 1)                   // ===> RUN the Alarm
   {
@@ -918,11 +947,18 @@ void RunAlarm()
 void ShowDP(byte isOn)
 {
   // show / hide the DP - dotW-H,x,y1,y2
-  byte   dot_width  = Design[DisplayN][16];
-  byte   dot_height = Design[DisplayN][17];
-  byte   dot_x      = Design[DisplayN][18];
-  byte   dot_y1     = Design[DisplayN][19];
-  byte   dot_y2     = Design[DisplayN][20];
+  /*
+  byte   dot_width  = DESIGN[DisplayN][16];
+  byte   dot_height = DESIGN[DisplayN][17];
+  byte   dot_x      = DESIGN[DisplayN][18];
+  byte   dot_y1     = DESIGN[DisplayN][19];
+  byte   dot_y2     = DESIGN[DisplayN][20];
+  //*/
+  byte   dot_width  = pgm_read_byte_near(DESIGN[DisplayN] + 16);
+  byte   dot_height = pgm_read_byte_near(DESIGN[DisplayN] + 17);
+  byte   dot_x      = pgm_read_byte_near(DESIGN[DisplayN] + 18);
+  byte   dot_y1     = pgm_read_byte_near(DESIGN[DisplayN] + 19);
+  byte   dot_y2     = pgm_read_byte_near(DESIGN[DisplayN] + 20);
   if (dot_width)
   {
     DrawSquareFilled(dot_x, dot_y1, dot_width, dot_height, (isOn) ? WHITE : BLACK);
@@ -930,10 +966,17 @@ void ShowDP(byte isOn)
   }
 
   // show / hide the alarm dots - al1x,y,al2x,y,timeline
-  byte   al1_x     = Design[DisplayN][21];
-  byte   al1_y     = Design[DisplayN][22];
-  byte   al2_x     = Design[DisplayN][23];
-  byte   al2_y     = Design[DisplayN][24];
+  /*
+  byte   al1_x     = DESIGN[DisplayN][21];
+  byte   al1_y     = DESIGN[DisplayN][22];
+  byte   al2_x     = DESIGN[DisplayN][23];
+  byte   al2_y     = DESIGN[DisplayN][24];
+  //*/
+  byte   al1_x     = pgm_read_byte_near(DESIGN[DisplayN] + 21);
+  byte   al1_y     = pgm_read_byte_near(DESIGN[DisplayN] + 22);
+  byte   al2_x     = pgm_read_byte_near(DESIGN[DisplayN] + 23);
+  byte   al2_y     = pgm_read_byte_near(DESIGN[DisplayN] + 24);
+  
   byte   color     = (isOn) ? BLACK : WHITE;
   DrawPixel(al1_x, al1_y, (Alarm1Flag) ? color : BLACK);
   DrawPixel(al2_x, al2_y, (Alarm2Flag) ? color : BLACK);
@@ -941,12 +984,18 @@ void ShowDP(byte isOn)
 
 void ShowOptions(byte flag)
 {
-  if      (!Design[DisplayN][25]) return;
+  //if      (!DESIGN[DisplayN][25]) return;
+  if      (!pgm_read_byte_near(DESIGN[DisplayN] + 25)) return;
 
   // show / hide the options - al1x,y,al2x,y,opt_xy
-  byte   opt_flag   = Design[DisplayN][25];
-  byte   opt_x      = Design[DisplayN][26];
-  byte   opt_y      = Design[DisplayN][27];
+  /*
+  byte   opt_flag   = DESIGN[DisplayN][25];
+  byte   opt_x      = DESIGN[DisplayN][26];
+  byte   opt_y      = DESIGN[DisplayN][27];
+  //*/
+  byte   opt_flag   = pgm_read_byte_near(DESIGN[DisplayN] + 25);
+  byte   opt_x      = pgm_read_byte_near(DESIGN[DisplayN] + 26);
+  byte   opt_y      = pgm_read_byte_near(DESIGN[DisplayN] + 27);
 
   // draw a dot/second if time > 0s and time < 31s, then erase a dot/second until time == 59s
   // when flag = 0xFF draw all the line
@@ -1034,7 +1083,7 @@ void ShowOptions(byte flag)
 void StartMessage()
 {
   // scroll TIME to left, end with clear SCREEN
-  unsigned long timerStamp = millis();
+  unsigned long timerStamp = millis(); //return;
   byte   counter  = NB_MATRIX * 8;
   while (counter--)
   {
@@ -1049,7 +1098,7 @@ void StartMessage()
 void StopMessage()
 {
   // scroll SCREEN to left, end with TIME
-  unsigned long timerStamp = millis();
+  unsigned long timerStamp = millis(); //return;
   byte   counter  = NB_MATRIX * 8;
   while (counter--)
   {
@@ -1101,9 +1150,11 @@ void SplashScreen()
   //setFont(*FONT_REGULAR);
   
   setFont(*FONT_REGULAR);
-  ScrollText("ArduinO' ClocK", 1, false, true);     // not append, scroll untill offScreen
+  S_Text = "ArduinO' ClocK";
+  ScrollText(1, false, true);     // not append, scroll untill offScreen
   setFont(*FONT_TINY);
-  ScrollText("A SAMPLE... FOR FUN!", (8 - FontHeight) / 2, false, true);
+  S_Text = "A SAMPLE... FOR FUN!";
+  ScrollText((8 - FontHeight) / 2, false, true);
 }
 
 void ShowDate()
@@ -1117,32 +1168,35 @@ void ShowDate()
   String sMonth[] = {"janvier", convertText("février"), "mars", "avril", "mai", "juin",
                      "juillet", convertText("août"), "septembre", "octobre", "novembre", convertText("décembre")
                     };
-  String text = "Date: ";
+  S_Text = "Date: ";
+  
   switch (DateN)
   {
     case 0:
-      text  = sDoW[DateDoW] + space + String(DateDay) + space + sMonth[DateMonth];
+      S_Text  = sDoW[DateDoW] + space + String(DateDay) + space + sMonth[DateMonth];
       break;
 
     case 1:
-      text += String(DateDay) + space + "-" + space + String(DateMonth) + space + "-";
+      S_Text += String(DateDay) + space + "-" + space + String(DateMonth) + space + "-";
       break;
 
     case 2:
-      text += String(DateMonth) + space + "-" + space + String(DateDay) + space + "-";
+      S_Text += String(DateMonth) + space + "-" + space + String(DateDay) + space + "-";
       break;
   }
-  text += space + String(DateYear);
-  //String text     = sDoW[DateDoW] + space + String(DateDay) + space + sMonth[DateMonth] + space + String(DateYear);
-
-  ScrollText(text, 0, false, true);
+  S_Text += space + String(DateYear);
+  space    = "";
+  //sDoW[]   = "";
+  //sMonth[] = "";
+  
+  ScrollText(0, false, true);
   StopMessage();
 }
 
 void ShowTemp()
 {
   setFont(*FONT_REGULAR);
-  StartMessage();
+  StartMessage(); //return;
 
   // use convertText() to manage accent and special chars alike "°"
   float  temperature = -23.674574;
@@ -1152,11 +1206,12 @@ void ShowTemp()
   temperature       -= temp10;
   temperature       *= 10;
   int    temp1       = int(temperature);
-  String text        = "Temp: ";
-  if (minus) text   += "-";
-  text              += String(temp10) + "." + String(temp1) + convertText("°C");
+  
+  S_Text             = "Temp: ";
+  if (minus) S_Text += "-";
+  S_Text            += String(temp10) + "." + String(temp1) + convertText("°C");
 
-  ScrollText(text, 0, false, true);
+  ScrollText(0, false, true);
   StopMessage();
 }
 
@@ -1167,9 +1222,10 @@ void ShowNote()
   randomSeed(analogRead(0));
   bool   rest = true;
   int    n    = 32;
-  String text = "";
+  S_Text      = "";
   while (n-- > 0)   // compose some partition with random notes
   {
+    // add random notes
     byte ascII;
     if (rest)
     {
@@ -1181,20 +1237,21 @@ void ShowNote()
       ascII = 33 + (random(110) / 10);
       if (ascII >= 41) rest = true;
     }
-    text += String(char(ascII));
+    S_Text += String(char(ascII));
 
+    // add some more spaces when needed
     if      (ascII == 33 || ascII == 34 || ascII == 41)
     {
-      text += "  ";
-      n    -= 3;
+      S_Text += "  ";
+      n      -= 3;
     }
     else if (ascII == 35 || ascII == 36 || ascII == 42)
     {
-      text += " ";
-      n    -= 1;
+      S_Text += " ";
+      n      -= 1;
     }
   }
-  
-  ScrollText(text, 0, true, false);     // not append, scroll untill offScreen
+
+  ScrollText(0, true, false);     // not append, scroll untill offScreen
 }
 
