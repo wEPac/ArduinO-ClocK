@@ -46,7 +46,7 @@
             scrollUp = 0, scrollDown, scrollLeft, scrollRight
             ex: nnn.scroll(LEDMatrixDriver::scrollDirection::scrollDown)
       //frameBuffer organisation:
-        
+
         Buffer byte #     rowY #    columnX #       module #
         -----------------------------------------------------
             0             0         0~7             0
@@ -61,7 +61,7 @@
             -------------------------------------------------
             ...
         -----------------------------------------------------
-            
+
 
    There are 2 different fonts, they are not compatible. One (Digit) is to print
    the time with vertical slide show, one (Alpha) is to print the text. Both are
@@ -77,7 +77,7 @@
 
 
 #include <avr/pgmspace.h>
-#include "LEDMatrixDriver.hpp"
+#include "LEDMatrixDriver.h"
 
 #include "fonts.h"
 
@@ -106,56 +106,61 @@ LEDMatrixDriver MAX(NB_MATRIX, CS_PIN, REVERSED);
 //-----------------------------------------------------------------------
 
 
-//--- Date Var
-byte DateDoW        =  3;     // 0:monday
-byte DateDay        =  14;
-byte DateMonth      =  2;     // 0:january
-int  DateYear       =  2019;
+//--- RTC management
+#define TIME_SPEED    1000      // 1000 == 1s, this interval shouldnt be changed
+#define DOT_SPEED     2 * (TIME_SPEED / 3)  // after a while we set DP off, pretty with 2/3 rate
+unsigned long PreviousMillis;   // tracks the time to prevent roll up after 50 days
+byte    TimeFlag;               // to know what digit changed and so, we must display it
+
+//--- Date
+#define DATE_MAX       =  3;
+byte    DateN          =  1;    // 0:alpha, 1:DD-MM-YYYY, 2:MM-DD-YYYY
+byte    DateDoW        =  3;    // 0:monday
+byte    DateDay        =  14;
+byte    DateMonth      =  2;    // 0:january
+int     DateYear       =  2019;
 
 
-//--- Time Var
-byte TimeHours10    =  2;
-byte TimeHours1     =  3;
-byte TimeMinutes10  =  5;
-byte TimeMinutes1   =  7;
-byte TimeSeconds10  =  0;
-byte TimeSeconds1   =  0;
-unsigned long PreviousMillis; // tracks the time to prevent roll up after 50 days
-byte TimeFlag;                // to know what digit changed and so, we must display it
+//--- Time
+byte    TimeHours10    =  2;
+byte    TimeHours1     =  3;
+byte    TimeMinutes10  =  5;
+byte    TimeMinutes1   =  7;
+byte    TimeSeconds10  =  0;
+byte    TimeSeconds1   =  0;
 
 
-//--- Alarm Var
-#define ALARM_MAX      30      // how long we ring in s (shouldnt be < 5s)
-byte Alarm1Flag     = true;   // set alarm 1, on:true / off:false
-byte Alarm2Flag     = false;  // set alarm 2, on:true / off:false
-byte AlarmHours10   =  2;
-byte AlarmHours1    =  3;
-byte AlarmMinutes10 =  5;
-byte AlarmMinutes1  =  8;
-byte AlarmSeconds10;
-byte AlarmSeconds1;
+//--- Alarm
+#define ALARM_MAX      30000    // how long we ring in millis (shouldnt be < 5000s)
+unsigned long AlarmMillis;      // tracks the time to stop the alarm
+byte    Alarm1Flag     = true;  // set alarm 1, on:true / off:false
+byte    Alarm2Flag     = false;  // set alarm 2, on:true / off:false
+byte    AlarmHours10   =  2;
+byte    AlarmHours1    =  3;
+byte    AlarmMinutes10 =  5;
+byte    AlarmMinutes1  =  8;
+byte    AlarmSeconds10;
+byte    AlarmSeconds1;
 
 
 //--- Recording old digits to make the slide show
-byte LastHours10    =  0;
-byte LastHours1     =  0;
-byte LastMinutes10  =  0;
-byte LastMinutes1   =  0;
-byte LastSeconds10  =  0;
-byte LastSeconds1   =  0;
+byte    LastHours10    =  0;
+byte    LastHours1     =  0;
+byte    LastMinutes10  =  0;
+byte    LastMinutes1   =  0;
+byte    LastSeconds10  =  0;
+byte    LastSeconds1   =  0;
 
 
-//--- Display Var
+//--- About Display
 #define WHITE         0xFF
 #define BLACK         0x00
-#define INTENSITY_MAX 8       // 0~15 but upon 7 there is no real change
-byte Intensity      = 0;      // 0~7
+#define INTENSITY_MAX 8         // 0~15 but upon 7 there is no real change
+byte    Intensity     = 0;      // 0~7
 
-//byte FontType       = 2;      // 0~3, 0=analog big, 1=digital big, 2=analog tiny, 3=digital tiny
-
-#define DISPLAY_MAX   6;      // how many design we have
-byte    DisplayN    = 0;      // index to show design from array Design[][] settings
-byte    FontN;                // index for different font in a design kind
+#define DISPLAY_MAX   6;        // how many design we have
+byte    DisplayN      = 0;      // index to show design from array Design[][] settings
+byte    FontN;                  // index for different font in a design kind
 // Design[][] contains settings for each kind of display, each row is a kind:
 //       0      fnt#,               how many fonts we have in this design (rollup, fonts must be in right order)
 //       1      font,               hour:           1st font of a kind (-1 to hide this field)
@@ -172,7 +177,7 @@ byte    FontN;                // index for different font in a design kind
 //                                    2:Temperature
 //                                    x,y, coord for the option
 //      28      curF,               current font number used for this design
-byte  Design[][29] = // DisplayN will give the font and coords
+byte    Design[][29]  =         // DisplayN will give the font and coords
 { //fnt#,font,h10xy,h1xy, font, m10xy,  m1xy, font, s10xy,  s1xy, dotW, H,  x,y1,y2,   al1xy, al2xy,  opt, x,y,curF,
   //         2      4        6      8     10        12     14       16     18    20       22     24         26    28
   {4,    0,  0, 0,  8, 0,    0, 18, 0, 26, 0,   -1,  0, 0,  0, 0,    2, 2, 15, 1, 4,   15, 7, 16, 7,    0,  0, 0, 2}, // h:m
@@ -184,21 +189,21 @@ byte  Design[][29] = // DisplayN will give the font and coords
 };
 
 //--- About Time digit
-#define SLIDE_SPEED   40      // 20~100 how much to slower digits sliding (shouldnt be slower than 20 = 1/3 s)
-byte SlideShow      = true;   // 0~1 to change digit with or without a slide show
-byte LastSlideShow;
+#define SLIDE_SPEED   40        // 20~100 how much to slower digits sliding (shouldnt be slower than 20 = 1/3 s)
+byte    SlideShow     = true;   // 0~1 to change digit with or without a slide show
+byte    LastSlideShow;
 
 //--- About Alpha Text
-#define SPACE_WIDTH   3       // define width of " " since code is handling whitespace
-#define CHAR_SPACING  1       // pixels between characters
-#define SCROLL_DELAY  50      // 20~80, how to slower scrolling text
-byte Scroll_Test    = true;   // flag to scroll text or not
-byte* pFont;                  // pointer for current font
-byte FontWidth;               // current font dimension
-byte FontHeight;
+#define SCROLL_SPEED  50        // 20~80, how to slower scrolling text
+//byte    Scroll_Text   = true;   // flag to scroll text or not
+#define SPACE_WIDTH   3         // define width of " " since code is handling whitespace
+#define CHAR_SPACING  1         // pixels between characters
+byte*   pFont;                  // pointer for current font
+byte    FontWidth;              // current font dimension
+byte    FontHeight;
 
-//--- About buffer
-byte* pBuffer;                // frameBuffer address
+//--- About Led Matrix frameBuffer
+byte*   pBuffer;                // frameBuffer address
 
 
 //-----------------------------------------------------------------------
@@ -218,25 +223,30 @@ void setup()
   //--- set Led Matrix on
   pBuffer = MAX.getFrameBuffer();
   ClearScreen();
-  MAX.setIntensity(Intensity);
+  //MAX.setIntensity(Intensity);
   MAX.setEnabled(true);
   //MAX.setDecode(0x00);  // Disable decoding for all digits.
 
   //testText();
-  ShowWelcome();
+  SplashScreen();
+
+  //TimeFlag       = 0xFF;      // 1st sequence, we will print each digits
+  //FontN          = Design[DisplayN][28];
+  ComputeTime(true);
+  StopMessage();
+  ShowTime(0xFF, true);
+  MAX.setIntensity(Intensity);
 
   PreviousMillis = millis();  // the RTC reference now
-  TimeFlag       = 0xFF;      // 1st sequence, we will print each digits
-  FontN          = Design[DisplayN][28];
 }
 
 void loop()
 {
   //testText();
 
-  ComputeTime(true);              // computes new digits and set TimeFlag for them
+  ComputeTime(true);           // computes new digits and set TimeFlag for them
 
-  
+
   if (Alarm1Flag == 1)         // check if we must ring for the alarm
   {
     if ((AlarmHours10 == TimeHours10) && (AlarmHours1 == TimeHours1)
@@ -245,11 +255,12 @@ void loop()
     {
       digitalWrite(PIN_BUZZER, HIGH); // ===> START the Alarm
       Alarm1Flag++;
+      AlarmMillis   = PreviousMillis;
     }
   }
 
   // speed up to reach the time after a busy period (ie displaying alarm or date)
-  if ((unsigned long)(millis() - PreviousMillis) > 1000)
+  if ((unsigned long)(millis() - PreviousMillis) > TIME_SPEED)
   {
     TimeFlag       = 0xFF;  // force to show all digits (not only those they changed)
     goto endLoop;
@@ -262,32 +273,34 @@ void loop()
   if (Alarm1Flag > 1)
   {
     RunAlarm();
-    change_flag  = 0x00;    // when parity fill screen, dont display DP, lock settings
+    change_flag  = 0x00;    // dont display DP, lock settings
   }
   else if (TimeMinutes1 & 0x01 && TimeSeconds10 == 3 && TimeSeconds1 == 0)
   {
     ShowDate();
-    change_flag  = 0x00;    // when parity fill screen, dont display DP, lock settings
+    change_flag  = 0x00;    // when parity displays date, dont display DP, lock settings
     ShowTime(0xFF, true);
   }
   else if (!(TimeMinutes1 & 0x01) && TimeSeconds10 == 3 && TimeSeconds1 == 0)
   {
     ShowTemp();
-    change_flag  = 0x00;    // when parity fill screen, dont display DP, lock settings
+    change_flag  = 0x00;    // when no parity displays temperature, dont display DP, lock settings
     ShowTime(0xFF, true);
   }
-  else ShowTime(0x00, true);  // ===> show casual time (only new digits)
+  else ShowTime(0x00, true);  // ===> show casual time (digits accorded to TimeFlag, display time)
 
 
 
   //---> wait for 1 second betwwen each loop
   // this is here our RTC will work, not so bad, but lost with power down
-  unsigned long currentMillis = millis();
-  while ((unsigned long)(currentMillis - PreviousMillis) < 1000)
+  //unsigned long currentMillis = millis();
+  //while ((unsigned long)(currentMillis - PreviousMillis) < TIME_SPEED)
+  while ((unsigned long)(millis() - PreviousMillis) < TIME_SPEED)
   {
     //--- Set DP off
     // after a while we set DP off, pretty with 2/3 rate, so 650
-    if ((change_flag & 0x01) && ((unsigned long)(currentMillis - PreviousMillis) > 650))
+    //if ((change_flag & 0x01) && ((unsigned long)(currentMillis - PreviousMillis) > DOT_SPEED))
+    if ((change_flag & 0x01) && ((unsigned long)(millis() - PreviousMillis) > DOT_SPEED))
     {
       change_flag ^= 0x01;  // we do it once only, so we set the flag
       ShowDP(false);        // set DP off
@@ -310,7 +323,7 @@ void loop()
       DisplayN++;
       DisplayN    %= DISPLAY_MAX;
       //if (FontN >= Design[DisplayN][ 0]) FontN = 0; // if current font is out of range, reset font
-      FontN        = Design[DisplayN][28]; // restore font
+      //FontN        = Design[DisplayN][28]; // restore font
       ShowTime(0xFF, true);       // show current setting
     }
 
@@ -343,10 +356,10 @@ void loop()
       ShowTime(0x10, true);       // show current setting
     }
 
-    currentMillis = millis();
+    //currentMillis = millis();
   }
 
-  endLoop:
+endLoop:
   //---> set new time ref => + 1s
   PreviousMillis += 1000; // we wont use millis() here to preserve our RTC
   LastSeconds1    = TimeSeconds1;
@@ -440,15 +453,15 @@ void DrawSquareFilled(byte coordX, byte coordY, byte lenX, byte lenY, byte isSho
 
 
 /*
-void testText()
-{
+  void testText()
+  {
   byte   val     = 27;
   String text    = "Gn" + String(char(128)) + String(char(128));
 
   text = String(val) + "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_'abcdefghijklmnopqrstuvwxyz{|}~" + String(char(128)) + String(char(127));
   text = convertText(String("°àâèéêëîïùû"));
   //text = "Gnnn" + convertText("ééééé... aïe!");
-  
+
   randomSeed(analogRead(0));
   byte disp = random(40) / 10;
   //disp = 3;
@@ -465,15 +478,15 @@ void testText()
       setFont(*FONT_NARROW);
       break;
     case 3:
-      setFont(*FONT_ALPHA);
+      setFont(*FONT_REGULAR);
       break;
   }
 
   byte counter = 3;
-  while (counter--) ScrollText(text, (8 - FontHeight) / 2); // scroll text at height center
+  while (counter--) ScrollText(text, (8 - FontHeight) / 2, false, true);     // not append, scroll untill offScreen
   delay(10000);
-}
-//*/
+  }
+  //*/
 
 void setFont(byte* font_name)
 {
@@ -481,29 +494,32 @@ void setFont(byte* font_name)
   //FontHeight = font_name[1];
   FontWidth  = pgm_read_byte_near(font_name);
   FontHeight = pgm_read_byte_near(font_name + 1);
-  pFont      = font_name;
+  pFont      = font_name + FontWidth;
 }
 
 //=========> display a string with scrolling, at pos Y
-void ScrollText(String text, byte coordY)
+void ScrollText(String text, byte coordY, bool append, bool offScreen)
 {
+  // append:true    original screen is scrolled while text appears
+  // offScreen:true text is scrolled until to disappear from screen
   int text_length = text.length();
   int text_width  = getTextWidth(text);
-  int xPos        = MATRIX_WIDTH;
-  int idx         = text_width + MATRIX_WIDTH;
-  unsigned long scrollTimerStamp = (unsigned long)(SCROLL_DELAY + millis());
+  int xPos        = MATRIX_WIDTH;                                   // start out of screen at right
+  int idx         = text_width + ((offScreen) ? MATRIX_WIDTH : 0);    // end out of screen at left
+  unsigned long timerStamp = millis();
 
-  MAX.clear();
+  if (!append) MAX.clear();
   while (idx--)
   {
-    while (millis() < scrollTimerStamp) ;
-    scrollTimerStamp = SCROLL_DELAY + millis();
+    while ((unsigned long)(millis() - timerStamp) < SCROLL_SPEED);
+    timerStamp = millis();
+    if (append) MAX.scroll(LEDMatrixDriver::scrollDirection::scrollLeft);
     setText(text, text_length, xPos--, coordY);
     MAX.display();
   }
 }
 
-// writes text of the given length for the given position, to the driver buffer.
+// write text of the given length for the given position, into the driver buffer.
 void setText(String text, int text_length, int coordX, int coordY)
 {
   for (int i = 0; i < text_length; i++)
@@ -511,7 +527,7 @@ void setText(String text, int text_length, int coordX, int coordY)
     if (coordX > MATRIX_WIDTH) return;  // stop if char is outside visible area
 
     byte  ascII      = text[i] - 32;     // font starts with " " space char
-    byte* pChar      = pFont + FontWidth * (ascII + 1);
+    byte* pChar      = pFont + FontWidth * ascII;
     int   char_width = getCharWidth(ascII, pChar);
 
     // only draw if char is visible
@@ -530,7 +546,7 @@ void setText(String text, int text_length, int coordX, int coordY)
         }
       }
     }
-    
+
     coordX += char_width + CHAR_SPACING;
   }
 }
@@ -539,9 +555,9 @@ void setText(String text, int text_length, int coordX, int coordY)
 int getCharWidth(byte ascII, byte* pChar)
 {
   byte char_width = FontWidth;
-  
+
   if (ascII == 0) return char_width / 2;   // " " space char
-  
+
   while (char_width--)                  // check for the 1st byte is not empty
   {
     //if (font[ascII][char_width])
@@ -565,7 +581,7 @@ int getTextWidth(String text)
   while (text_idx--)
   {
     byte  ascII      = text[text_idx] - 32;
-    byte* pChar      = pFont + FontWidth * (ascII + 1);
+    byte* pChar      = pFont + FontWidth * ascII;
     int   char_width = getCharWidth(ascII, pChar);
     text_width      += char_width + CHAR_SPACING;
   }
@@ -603,9 +619,9 @@ String convertText(String text)
   return text;
 }
 /*
-// A little tool to find the correspondance
-void giveCharset()
-{
+  // A little tool to find the correspondance
+  void giveCharset()
+  {
   Serial.begin(57600);
   delay(100);
   String text = "°àâèéêëîïùû";
@@ -626,8 +642,8 @@ void giveCharset()
     Serial.print(idx); Serial.print(" => "); Serial.print(indice); Serial.print(", "); Serial.println(val);
   }
   Serial.end();
-}
-//*/
+  }
+  //*/
 
 
 
@@ -709,9 +725,9 @@ void ComputeTime(bool full)
 
   // ======> here, using a DS36231 RTC, we should check date at midnight to adjust <======
   if ( (DateDay >= 28 && DateMonth == 1 && (DateMonth % 4) != 0)
-    || (DateDay >= 29 && DateMonth == 1)
-    || (DateDay >= 30 && (DateMonth == 3 || DateMonth == 5 || DateMonth == 8 || DateMonth == 10))
-    || (DateDay >= 31))
+       || (DateDay >= 29 && DateMonth == 1)
+       || (DateDay >= 30 && (DateMonth == 3 || DateMonth == 5 || DateMonth == 8 || DateMonth == 10))
+       || (DateDay >= 31))
   {
     DateDay = 1;
     if (full)
@@ -735,7 +751,7 @@ void ShowTime(byte flag, bool showIt)
   // For digit concerned by TimeFlag, we display the digit
   // flag:0xFF force full display from each digits
   // showIt:true display the result, false it only fill the frameBuffer
-  
+
   TimeFlag |= flag;
   if (TimeFlag == 0xFF) MAX.clear();
 
@@ -744,6 +760,7 @@ void ShowTime(byte flag, bool showIt)
 
 
   // set values and pointers for h, m, s for the next loop, so it will run faster
+  FontN          = Design[DisplayN][28];
   int   font_idx;
   font_idx       = Design[DisplayN][ 1] + FontN;
   byte  width_h  = FONT_DIGIT_SIZE[font_idx][0];
@@ -776,7 +793,7 @@ void ShowTime(byte flag, bool showIt)
   else if (LastHours10 == 0) pOld_h10 = 0xFF; // display empty char
 
   byte slide = 1; if (SlideShow && TimeFlag != 0xFF) slide = 8;
-  unsigned long tempo;
+  unsigned long timerStamp = millis();
   while (slide--)
   {
     if (Design[DisplayN][11] != 0xFF)
@@ -803,8 +820,8 @@ void ShowTime(byte flag, bool showIt)
 
     if (showIt) MAX.display();
 
-    tempo = millis();
-    if (slide) while ((unsigned long)(millis() - tempo) < SLIDE_SPEED) bit(8);
+    if (slide) while ((unsigned long)(millis() - timerStamp) < SLIDE_SPEED);
+    timerStamp = millis();
   }
 
   TimeFlag = 0;      // reset the flag, it will get new value at next "computeTime"
@@ -848,35 +865,51 @@ void ShowDigit(byte slide, byte* pNewDigit, byte* pOldDigit, byte coordX, byte c
 
 void RunAlarm()
 {
+#define SHOW_NOTE true
   //---> Display time or alarm
-  if      (Alarm1Flag >= ALARM_MAX + 2)                    // ===> STOP the Alarm
+  if      ((unsigned long)(millis() - AlarmMillis) > ALARM_MAX) // ===> STOP the Alarm
+    //if      (Alarm1Flag >= ALARM_MAX + 2)      // ===> STOP the Alarm
   {
     Alarm1Flag = false;
     digitalWrite(PIN_BUZZER, LOW);
     MAX.setIntensity(Intensity);
-    ShowTime(0xFF, true);     // show time (all digits)
+    StartMessage();
     SlideShow  = LastSlideShow;
+    StopMessage();
+    //ShowTime(0xFF, true);     // show time (all digits, display)
+
   }
-  else if (Alarm1Flag > 1)                                 // ===> RUN the Alarm
+  else if (Alarm1Flag > 1)                   // ===> RUN the Alarm
   {
-    if (Alarm1Flag & 0x01)   // when parity show time (all digits)
+    if (!SHOW_NOTE && Alarm1Flag & 0x01)         // when parity show time (all digits)
     {
       MAX.setIntensity(Intensity);
-      ShowTime(0xFF, true);
+      ShowTime(0xFF, true);   // show time (all digits, display)
     }
     else
     {
-      if (Alarm1Flag == 2)
+      if (Alarm1Flag == 2)                   // ===> START the Alarm
       {
+        digitalWrite(PIN_BUZZER, HIGH);
         LastSlideShow = SlideShow;
         SlideShow     = false;
-        digitalWrite(PIN_BUZZER, HIGH); // ===> START the Alarm
+        //StartMessage();
+
+        if (SHOW_NOTE) 
+        {
+          StartMessage();
+        }
       }
 
-      //FillScreen(WHITE, WHITE);
-      ReverseScreen();
-      MAX.display();
-      MAX.setIntensity(INTENSITY_MAX);  // display all dots with high brightness to flash
+      if (SHOW_NOTE) ShowNote();
+      else
+      {
+        //FillScreen(WHITE, WHITE);
+
+        ReverseScreen();
+        MAX.display();
+        MAX.setIntensity(INTENSITY_MAX);  // display all dots with high brightness to flash
+      }
     }
     Alarm1Flag++;
   }
@@ -892,8 +925,8 @@ void ShowDP(byte isOn)
   byte   dot_y2     = Design[DisplayN][20];
   if (dot_width)
   {
-    DrawSquareFilled(dot_x, dot_y1, dot_width, dot_height, WHITE * isOn);
-    DrawSquareFilled(dot_x, dot_y2, dot_width, dot_height, WHITE * isOn);
+    DrawSquareFilled(dot_x, dot_y1, dot_width, dot_height, (isOn) ? WHITE : BLACK);
+    DrawSquareFilled(dot_x, dot_y2, dot_width, dot_height, (isOn) ? WHITE : BLACK);
   }
 
   // show / hide the alarm dots - al1x,y,al2x,y,timeline
@@ -901,8 +934,9 @@ void ShowDP(byte isOn)
   byte   al1_y     = Design[DisplayN][22];
   byte   al2_x     = Design[DisplayN][23];
   byte   al2_y     = Design[DisplayN][24];
-  DrawPixel(al1_x, al1_y, WHITE * (Alarm1Flag > 0));
-  DrawPixel(al2_x, al2_y, WHITE * (Alarm2Flag > 0));
+  byte   color     = (isOn) ? BLACK : WHITE;
+  DrawPixel(al1_x, al1_y, (Alarm1Flag) ? color : BLACK);
+  DrawPixel(al2_x, al2_y, (Alarm2Flag) ? color : BLACK);
 }
 
 void ShowOptions(byte flag)
@@ -997,102 +1031,170 @@ void ShowOptions(byte flag)
 
 
 
-void ShowWelcome()
+void StartMessage()
+{
+  // scroll TIME to left, end with clear SCREEN
+  unsigned long timerStamp = millis();
+  byte   counter  = NB_MATRIX * 8;
+  while (counter--)
+  {
+    while ((unsigned long)(millis() - timerStamp) < SCROLL_SPEED);
+    timerStamp = millis();
+    MAX.scroll(LEDMatrixDriver::scrollDirection::scrollLeft);
+    MAX.display();
+    //while ((unsigned long)(millis() - timerStamp) < SCROLL_SPEED);
+    //timerStamp = millis();
+  }
+}
+void StopMessage()
+{
+  // scroll SCREEN to left, end with TIME
+  unsigned long timerStamp = millis();
+  byte   counter  = NB_MATRIX * 8;
+  while (counter--)
+  {
+    while ((unsigned long)(millis() - timerStamp) < SCROLL_SPEED);
+    timerStamp = millis();
+    ShowTime(0xFF, false);
+    int    n = counter;
+    while (n-- > 0) MAX.scroll(LEDMatrixDriver::scrollDirection::scrollRight);
+    MAX.display();
+    //while ((unsigned long)(millis() - timerStamp) < SCROLL_SPEED);
+    //timerStamp = millis();
+  }
+  TimeFlag != 0xFF;
+}
+
+
+
+void SplashScreen()
 {
   byte* pLogo = EPACLOGO;
-  byte  i     = 24;
+  byte  i     = 25;
   MAX.clear();
-  while (i--) MAX.setColumn(4 + i, pgm_read_byte_near(pLogo + i));
+  MAX.setIntensity(INTENSITY_MAX / 2);
+  while (i--) MAX.setColumn(3 + i, pgm_read_byte_near(pLogo + i));
   //ReverseScreen();
   MAX.display();
   delay(3000);
-  
+
   byte  x       = 40;
   byte* pSprite = *PACMAN;
   byte  spriteN = 0;
   byte  dir     = 1;
   while (x--)
   {
+    MAX.setColumn(x - 9, 0x00);
     byte  idx = 9;
     while (idx--) MAX.setColumn(x - 8 + idx, pgm_read_byte_near(pSprite + spriteN * 9 + idx));
     if      (spriteN == 3) dir = - 1;
     else if (spriteN == 0) dir =   1;
     spriteN = spriteN + dir;
     MAX.display();
-    delay(150);
+    delay(100);
   }
   delay(1000);
 
   //setFont(*FONT_TINY);
-  //setFont(*FONT_ALPHA);
   //setFont(*FONT_NARROW);
   //setFont(*FONT_DIGITAL);
-
-  setFont(*FONT_ALPHA);
-  ScrollText("ArduinO' ClocK", 1);
+  //setFont(*FONT_REGULAR);
+  
+  setFont(*FONT_REGULAR);
+  ScrollText("ArduinO' ClocK", 1, false, true);     // not append, scroll untill offScreen
   setFont(*FONT_TINY);
-  ScrollText("A SAMPLE... FOR FUN!", (8 - FontHeight) / 2);
-  setFont(*FONT_ALPHA);
-}
-
-void StartMessage()
-{
-  byte   counter  = NB_MATRIX * 8;
-  while (counter--)
-  {
-    MAX.scroll(LEDMatrixDriver::scrollDirection::scrollLeft);
-    MAX.display();
-    delay(50);
-  }
-}
-void StopMessage()
-{
-  byte   counter  = NB_MATRIX * 8;
-  while (counter-- > 1)
-  {
-    ShowTime(0xFF, false);
-    byte n = counter;
-    while (n--) MAX.scroll(LEDMatrixDriver::scrollDirection::scrollRight);
-    MAX.display();
-    delay(50);
-  }
-  TimeFlag != 0xFF;
+  ScrollText("A SAMPLE... FOR FUN!", (8 - FontHeight) / 2, false, true);
 }
 
 void ShowDate()
 {
+  setFont(*FONT_REGULAR);
   StartMessage();
-  
+
   // use convertText() to manage accent and special chars alike "°"
   String space    = String(" ");
   String sDoW[]   = {"Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"};
   String sMonth[] = {"janvier", convertText("février"), "mars", "avril", "mai", "juin",
                      "juillet", convertText("août"), "septembre", "octobre", "novembre", convertText("décembre")
                     };
-  String text     = sDoW[DateDoW] + space + String(DateDay) + space + sMonth[DateMonth] + space + String(DateYear);
+  String text = "Date: ";
+  switch (DateN)
+  {
+    case 0:
+      text  = sDoW[DateDoW] + space + String(DateDay) + space + sMonth[DateMonth];
+      break;
 
-  ScrollText(text, 0);
+    case 1:
+      text += String(DateDay) + space + "-" + space + String(DateMonth) + space + "-";
+      break;
+
+    case 2:
+      text += String(DateMonth) + space + "-" + space + String(DateDay) + space + "-";
+      break;
+  }
+  text += space + String(DateYear);
+  //String text     = sDoW[DateDoW] + space + String(DateDay) + space + sMonth[DateMonth] + space + String(DateYear);
+
+  ScrollText(text, 0, false, true);
   StopMessage();
 }
 
 void ShowTemp()
 {
+  setFont(*FONT_REGULAR);
   StartMessage();
-  
-  // use convertText() to manage accent and special chars alike "°"
-  float  temperature = -23.6;
-  byte   minus     = false; if (temperature < 0.0) minus = true;
-  temperature      = abs(temperature);
-  int    temp10    = int(temperature);
-  temperature     -= temp10;
-  temperature     *= 10;
-  int    temp1     = int(temperature);
-  String text      = "Temp ";
-  if (minus) text += "-";
-  text            += String(temp10) + "." + String(temp1) + convertText("°C");
 
-  ScrollText(text, 0);
+  // use convertText() to manage accent and special chars alike "°"
+  float  temperature = -23.674574;
+  byte   minus       = false; if (temperature < 0.0) minus = true;
+  temperature        = abs(temperature);
+  int    temp10      = int(temperature);
+  temperature       -= temp10;
+  temperature       *= 10;
+  int    temp1       = int(temperature);
+  String text        = "Temp: ";
+  if (minus) text   += "-";
+  text              += String(temp10) + "." + String(temp1) + convertText("°C");
+
+  ScrollText(text, 0, false, true);
   StopMessage();
 }
 
+void ShowNote()
+{
+  setFont(*MUSIC_NOTE);
+  //MAX.setIntensity(INTENSITY_MAX);  // display all dots with high brightness to flash
+  randomSeed(analogRead(0));
+  bool   rest = true;
+  int    n    = 32;
+  String text = "";
+  while (n-- > 0)   // compose some partition with random notes
+  {
+    byte ascII;
+    if (rest)
+    {
+      ascII = 33 + (random( 70) / 10);    // choose anything but a rest
+      rest  = false;
+    }
+    else
+    {
+      ascII = 33 + (random(110) / 10);
+      if (ascII >= 41) rest = true;
+    }
+    text += String(char(ascII));
+
+    if      (ascII == 33 || ascII == 34 || ascII == 41)
+    {
+      text += "  ";
+      n    -= 3;
+    }
+    else if (ascII == 35 || ascII == 36 || ascII == 42)
+    {
+      text += " ";
+      n    -= 1;
+    }
+  }
+  
+  ScrollText(text, 0, true, false);     // not append, scroll untill offScreen
+}
 
