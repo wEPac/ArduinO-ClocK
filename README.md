@@ -2,8 +2,8 @@
 A simple clock without RTC, based on:
   - 1 x Arduino Nano
   - 4 x MAX7219 8x8 Led Matrix
-  - 1 x Resistor Light Dependent
-  - 1 x passive Buzzer or Speaker
+  - 1 x Resistor Light Dependent (optional)
+  - 1 x passive Buzzer or Speaker (optional)
 
 RLD and Buzzer are optional.
 A base to learn or to build.
@@ -15,7 +15,7 @@ It is using the library <LEDMatrixDriver.hpp> by Bartosz Bielawski. This library
 
 It is displaying digits with sliding effect and many options can be set, like design, font types...
 
-A DS3231 RTC module can be added easily, to preserve time/ date settings and to have accurate calendar.
+A DS3231 RTC module can be added easily, to preserve time/date settings and to have accurate calendar.
 
 
 TODO
