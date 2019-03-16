@@ -227,7 +227,7 @@ void LEDMatrixDriver::scroll( scrollDirection direction )
     case scrollDirection::scrollRight:
       // Scrolling right needs to be done by bit shifting every uint8_t in the frame buffer
       // Bits that overlap need to be carried to the next cell in a row
-      for (i = 8 * N; i >= 0; i--)
+      for (i = 8 * N - 1; i >= 0; i--)  // <============= Changed !!!!!! corrupting memory !!!!!!
       {
         if (modRev)
         {
