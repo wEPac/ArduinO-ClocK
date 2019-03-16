@@ -28,5 +28,5 @@ const char * const sSETTINGS[] PROGMEM = {
 };
 
 const char * const sSPLASH[] PROGMEM = {
-  "ArduinO' ClocK", "A SAMPLE... FOR FUN!"
+  "A SAMPLE... FOR FUN!", "ArduinO' ClocK"
 };
