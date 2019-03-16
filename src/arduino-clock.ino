@@ -74,11 +74,15 @@
 #define  DEBUG
 
 
+
 #include <avr/pgmspace.h>
 #include "LEDMatrixDriver.h"
 
 #include "fontsAlpha.h"
 #include "fontsDigit.h"
+#include "fixedStrings.h"
+
+
 
 //--- SPI pins definition, adjust here at your wills--
 #define CS_PIN         9
@@ -1153,11 +1157,18 @@ void SplashScreen()
   //setFont(*FONT_REGULAR);
 
   setFont(*FONT_REGULAR);
-  S_Text = "ArduinO' ClocK";
-  ScrollText(1, false, true);     // not append, scroll untill offScreen
-  setFont(*FONT_TINY);
-  S_Text = "A SAMPLE... FOR FUN!";
-  ScrollText((8 - FontHeight) / 2, false, true);
+  i = 2;
+  while (i--)
+  {
+    S_Text = String((char*)pgm_read_ptr(& sSPLASH[i]));
+    ScrollText((8 - FontHeight) / 2, false, true);     // not append, scroll untill offScreen
+    setFont(*FONT_TINY);
+  }
+  //S_Text = String((char*)pgm_read_ptr(& sSPLASH[0]));
+  //ScrollText(1, false, true);     // not append, scroll untill offScreen
+  //setFont(*FONT_TINY);
+  //S_Text = String((char*)pgm_read_ptr(& sSPLASH[1]));
+  //ScrollText((8 - FontHeight) / 2, false, true);
 }
 
 void ShowDate()
@@ -1166,31 +1177,26 @@ void ShowDate()
   WipeScreen();
 
   // use convertText() to manage accent and special chars alike "°"
-  String space    = String(" ");
-  String sDoW[]   = {"Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"};
-  String sMonth[] = {"janvier", convertText("février"), "mars", "avril", "mai", "juin",
-                     "juillet", convertText("août"), "septembre", "octobre", "novembre", convertText("décembre")
-                    };
-  S_Text = "Date: ";
+  S_Text     = String((char*)pgm_read_ptr(& sMESSAGES[3])); // "Date: ";
+  String sep = " - ";
 
   switch (DateN)
   {
     case 0:
-      S_Text  = sDoW[DateDoW] + space + String(DateDay) + space + sMonth[DateMonth];
+      //S_Text  = sDoW[DateDoW] + space + String(DateDay) + space + sMonth[DateMonth];
+      S_Text  = String((char*)pgm_read_ptr(& sDOW[DateDoW])) + " " + String(DateDay) + " "
+        + convertText(String((char*)pgm_read_ptr(& sMONTH[DateMonth]))) + " ";
       break;
 
     case 1:
-      S_Text += String(DateDay) + space + "-" + space + String(DateMonth) + space + "-";
+      S_Text += String(DateDay) + sep + String(DateMonth) + sep;
       break;
 
     case 2:
-      S_Text += String(DateMonth) + space + "-" + space + String(DateDay) + space + "-";
+      S_Text += String(DateMonth) + sep + String(DateDay) + sep;
       break;
   }
-  S_Text += space + String(DateYear);
-  space    = "";
-  //sDoW[]   = "";
-  //sMonth[] = "";
+  S_Text += String(DateYear);
   ScrollText(0, false, true);
   
   SlideShow = true;
@@ -1210,9 +1216,10 @@ void ShowTemp()
   temperature       *= 10;
   int    temp1       = int(temperature);
 
-  S_Text             = "Temp: ";
+  S_Text             = String((char*)pgm_read_ptr(& sMESSAGES[2])); // "Temp: "
   if (minus) S_Text += "-";
-  S_Text            += String(temp10) + "." + String(temp1) + convertText(" °C");
+  S_Text            += String(temp10) + "." + String(temp1) 
+    + convertText(String((char*)pgm_read_ptr(& sMESSAGES[0])));  // " °C" / " °F" (0 / 1) 
   ScrollText(0, false, true);
   
   SlideShow = true;
