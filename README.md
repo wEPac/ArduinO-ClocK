@@ -19,6 +19,7 @@ A DS3231 RTC module can be added easily, to preserve time/ date settings and to 
 
 
 TODO
-  - add the RLD (Resistor Light Dependent)
-  - add settings management, for alarms too
-  - add the music for the alarm (hope tpo manage 2 voices for pretty sound)
+  - chronometer
+  - a RLD (Resistor Light Dependent)
+  - settings management, for alarms too
+  - music for the alarm (hope tpo manage 2 voices for pretty sound)
