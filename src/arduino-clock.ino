@@ -1,5 +1,5 @@
 
-/* Simple_MAX7219_Matrix_Clock
+/* Arduino'Clock
 
    A simple clock for Arduinos, using 4 x MAX7219 Led Matrix.
 
@@ -65,9 +65,7 @@
 
    There are 2 different fonts, they are not compatible. One (Digit) is to print
    the time with vertical slide show, one (Alpha) is to print the text. Both are
-   optimized for the usage to perform better speed.
-   The Alpha font was created using the LEDMatrixPainter application
-   by James Gohl (https://github.com/jamesgohl/LEDMatrixPainter)
+   optimized for the usage to perform better speed and to reduce memory usage.
 */
 
 
@@ -79,7 +77,8 @@
 #include <avr/pgmspace.h>
 #include "LEDMatrixDriver.h"
 
-#include "fonts.h"
+#include "fontsAlpha.h"
+#include "fontsDigit.h"
 
 //--- SPI pins definition, adjust here at your wills--
 #define CS_PIN         9
@@ -152,33 +151,36 @@ byte    LastSeconds1   =  0;
 
 
 //--- About Display
-#define WHITE         0xFF
-#define BLACK         0x00
-#define INTENSITY_MAX 8         // 0~15 but upon 7 there is no real change
-byte    Intensity     = 0;      // 0~7
+#define WHITE          0xFF
+#define BLACK          0x00
+#define INTENSITY_MAX  8        // 0~15 but upon 7 there is no real change
+byte    Intensity      = 0;     // 0~7
 
-#define DISPLAY_MAX   6         // how many design we have
-byte    DisplayN      = 0;      // index to show design from array DESIGN[][] settings
-byte    FontN;                  // index for different font in a design kind
+#define DISPLAY_MAX    6        // how many design we have
+byte    DisplayN       = 0;     // index to show design from array DESIGN[][] settings
+
+// DesignFont[] contain the selected font index used for a design in the array DESIGN[]
+byte    DesignFont[DISPLAY_MAX] = {2, 0, 1, 1, 0, 0};   // font = FONT_DIGIT[fidx + DesignFont[DisplayN]] 
 // DESIGN[][] contains settings for each kind of display, each row is a kind:
-//       0      fnt#,               how many fonts we have in this design (rollup, fonts must be in right order)
-//       1      font,               hour:           1st font of a kind (-1 to hide this field)
-//       2-3    h10xy,              hour:           x, y coordinates for 1st digit 10
-//       4-5    h1xy,               hour:           x, y coordinates for 2nd digit 01
+//       0      fMax,               how many fonts we have in this design (FONT_DIGIT[] must be in right order)
+//       1      fidx,               hour: 1st font of a kind (-1 to hide this field), font is from [fidx, fidx + fMax[
+//       2-3    h10xy,              hour: x, y coordinates for 1st digit 10
+//       4-5    h1xy,               hour: x, y coordinates for 2nd digit 01
 //       6-10   font, m10xy, m1xy,  same for minute
 //      11-15   font, s10xy, s1xy,  same for second
 //      16-17   dotW,H,             dots separator: Width, Height
 //      18-20   x,y1,y2             dots separator: x coordinate, y1 coord for dot 1, y2 coord for dot 2
 //      21-22   al1xy,              alarm1 dot:     x, y coordinates
 //      23-24   al2xy,              alarm2 dot:     x, y coordinates
-//      25-27   opt,x,y,              0:null
+//      25-27   opt,x,y,            option:
+//                                    0:null
 //                                    1:timeline
 //                                    2:Temperature
-//                                    x,y, coord for the option
+//                                  x, y coordinates for the option
 #define DESIGN_MAX  28
 const byte DESIGN[][DESIGN_MAX] PROGMEM =  // DisplayN will give the font and coords
-{ //fnt#,font,h10xy,h1xy, font, m10xy,  m1xy, font, s10xy,  s1xy, dotW, H,  x,y1,y2,   al1xy, al2xy,  opt, x,y,curF,
-  //         2      4        6      8     10        12     14       16     18    20       22     24         26    28
+{ //fMax,fidx,h10xy,h1xy, font, m10xy,  m1xy, font, s10xy,  s1xy, dotW, H,  x,y1,y2,   al1xy, al2xy,  opt, x,y,
+  //         2      4        6      8     10        12     14       16     18    20       22     24         26  
   {4,    0,  0, 0,  8, 0,    0, 18, 0, 26, 0,   -1,  0, 0,  0, 0,    2, 2, 15, 1, 4,   15, 7, 16, 7,    0,  0, 0}, // 0 h:m
   {4,   -1,  0, 0,  0, 0,    0,  0, 0,  8, 0,    0, 18, 0, 26, 0,    2, 2, 15, 1, 4,   15, 7, 16, 7,    0,  0, 0}, // 1 m:s
   {2,    6,  0, 0,  5, 0,    6, 12, 0, 17, 0,   10, 23, 2, 28, 2,    1, 2, 10, 1, 4,   30, 0, 31, 0,    0,  0, 0}, // 2 h:m:s
@@ -186,13 +188,14 @@ const byte DESIGN[][DESIGN_MAX] PROGMEM =  // DisplayN will give the font and co
   {2,   14,  1, 1,  8, 1,   14, 18, 1, 25, 1,   -1,  0, 0,  0, 0,    2, 1, 15, 2, 4,   15, 0, 16, 0,    1,  0, 7}, // 4 h:m + tL
   {2,   -1,  0, 0,  0, 0,   14,  1, 1,  8, 1,   14, 18, 1, 25, 1,    2, 1, 15, 2, 4,   15, 0, 16, 0,    1,  0, 7}, // 5 m:s + tL
 };
-// current font number used for a design in the array DESIGN[]
-byte    DesignFont[DISPLAY_MAX] = {2, 0, 1, 1, 0, 0}; 
-  
+
+
 //--- About Time digit
 #define SLIDE_SPEED   40        // 20~100 how much to slower digits sliding (shouldnt be slower than 20 = 1/3 s)
-byte    SlideShow     = true;   // 0~1 to change digit with or without a slide show
-byte    LastSlideShow;
+//byte    SlideShow     = true;   // 0~1 to change digit with or without a slide show
+//byte    LastSlideShow;
+byte    SlideShow;
+//int    SlideShow;
 
 //--- About Alpha Text
 #define SCROLL_SPEED  50        // 20~80, how to slower scrolling text
@@ -223,17 +226,21 @@ void setup()
 
   //--- set Led Matrix on
   pBuffer = MAX.getFrameBuffer();
-  ClearScreen();
+  //ClearScreen();
   //MAX.setIntensity(Intensity);
   MAX.setEnabled(true);
+  ClearScreen();
   //MAX.setDecode(0x00);  // Disable decoding for all digits.
 
   //testText();
-  SplashScreen();
-  
+  //SplashScreen();
+
   MAX.setIntensity(Intensity);
-  ComputeTime(true);
-  StopMessage();
+  //ComputeTime(true);          // true: 60s will increase minute counter
+  //StopMessage();
+  //ShowTime(0xFF, true);
+  
+  SlideShow = true;             // move the time on screen from right to center
   ShowTime(0xFF, true);
 
   PreviousMillis = millis();  // the RTC reference now
@@ -242,7 +249,6 @@ void setup()
 void loop()
 {
   //testText();
-
   ComputeTime(true);           // computes new digits and set TimeFlag for them
 
 
@@ -328,11 +334,10 @@ void loop()
     if ((change_flag & 0x08) && digitalRead(SET_FONT) == LOW)
     {
       change_flag ^= 0x08;        // we do it once only, so we set the flag
-      FontN++;
-      //FontN       %= DESIGN[DisplayN][ 0];
-      //DESIGN[DisplayN][28] = FontN;
-      FontN       %= pgm_read_byte_near(DESIGN[DisplayN]);
-      DesignFont[DisplayN] = FontN;
+      //DESIGN[DisplayN][28]++;
+      //DESIGN[DisplayN][28] %= DESIGN[DisplayN][ 0];
+      DesignFont[DisplayN]++;
+      DesignFont[DisplayN] %= pgm_read_byte_near(DESIGN[DisplayN]);
       ShowTime(0xFF, true);       // show current setting
     }
 
@@ -384,6 +389,20 @@ void ClearScreen()
 {
   MAX.clear();
   MAX.display();
+}
+
+void WipeScreen()
+{
+  // scroll screen content to left, end with wiped SCREEN
+  unsigned long timerStamp = millis();
+  byte   counter  = NB_MATRIX * 8;
+  while (counter--)
+  {
+    while ((unsigned long)(millis() - timerStamp) < SCROLL_SPEED);
+    timerStamp = millis();
+    MAX.scroll(LEDMatrixDriver::scrollDirection::scrollLeft);
+    MAX.display();
+  }
 }
 
 void FillScreen(byte mask1, byte mask2)
@@ -603,7 +622,7 @@ String convertText(String text)
         len--;
         val           = byte(text.charAt(idx));
         byte newAscII = 0;
-        switch(val)
+        switch (val)
         {
           case 176: newAscII = 127; break; // 127 = °
           case 160: newAscII = 128; break; // 128 = à
@@ -758,19 +777,22 @@ void ShowTime(byte flag, bool showIt)
   // showIt:true display the result, false it only fill the frameBuffer
 
   TimeFlag |= flag;
-  if (TimeFlag == 0xFF) MAX.clear();
-
-  ShowDP(true);           // display the DP
-  ShowOptions(TimeFlag);  // dispaly the line of seconds (for tiny fonts only)
-
+  
+  //if (TimeFlag == 0xFF) MAX.clear();
+  if (SlideShow)
+  {
+    TimeFlag  = 0xFF;
+    SlideShow = 32;
+  }
+  else SlideShow = 1;
 
   // set values and pointers for h, m, s for the next loop, so it will run faster
-  //FontN          = DESIGN[DisplayN][28];
-  FontN          = DesignFont[DisplayN];
-  
+  //byte  fontN      = DESIGN[DisplayN][28];
+  byte  fontN      = DesignFont[DisplayN];
+
   int   font_idx;
-  //font_idx       = DESIGN[DisplayN][ 1] + FontN;
-  font_idx       = pgm_read_byte_near(DESIGN[DisplayN] +  1) + FontN;
+  //font_idx       = DESIGN[DisplayN][ 1] + fontN;
+  font_idx       = pgm_read_byte_near(DESIGN[DisplayN] +  1) + fontN;
   byte  width_h  = FONT_DIGIT_SIZE[font_idx][0];
   byte  height_h = FONT_DIGIT_SIZE[font_idx][1];
   font_idx      *= FONT_DIGIT_STRIDE;
@@ -779,8 +801,8 @@ void ShowTime(byte flag, bool showIt)
   byte* pOld_h1  = FONT_DIGIT[font_idx + LastHours1   ];
   byte* pNew_h1  = FONT_DIGIT[font_idx + TimeHours1   ];
 
-  //font_idx       = DESIGN[DisplayN][ 6] + FontN;
-  font_idx       = pgm_read_byte_near(DESIGN[DisplayN] +  6) + FontN;
+  //font_idx       = DESIGN[DisplayN][ 6] + fontN;
+  font_idx       = pgm_read_byte_near(DESIGN[DisplayN] +  6) + fontN;
   byte  width_m  = FONT_DIGIT_SIZE[font_idx][0];
   byte  height_m = FONT_DIGIT_SIZE[font_idx][1];
   font_idx      *= FONT_DIGIT_STRIDE;
@@ -789,8 +811,8 @@ void ShowTime(byte flag, bool showIt)
   byte* pOld_m1  = FONT_DIGIT[font_idx + LastMinutes1 ];
   byte* pNew_m1  = FONT_DIGIT[font_idx + TimeMinutes1 ];
 
-  //font_idx       = DESIGN[DisplayN][11] + FontN;
-  font_idx       = pgm_read_byte_near(DESIGN[DisplayN] + 11) + FontN;
+  //font_idx       = DESIGN[DisplayN][11] + fontN;
+  font_idx       = pgm_read_byte_near(DESIGN[DisplayN] + 11) + fontN;
   byte  width_s  = FONT_DIGIT_SIZE[font_idx][0];
   byte  height_s = FONT_DIGIT_SIZE[font_idx][1];
   font_idx      *= FONT_DIGIT_STRIDE;
@@ -802,60 +824,76 @@ void ShowTime(byte flag, bool showIt)
   if      (TimeHours10 == 0) pNew_h10 = 0xFF; // display empty char
   else if (LastHours10 == 0) pOld_h10 = 0xFF; // display empty char
 
-  byte slide = 1; if (SlideShow && TimeFlag != 0xFF) slide = 8;
-  unsigned long timerStamp = millis();
-  while (slide--)
+
+  while (SlideShow--)
   {
-    //if (DESIGN[DisplayN][11] != 0xFF)
-    if (pgm_read_byte_near(DESIGN[DisplayN] + 11) != 0xFF)
+    if (SlideShow) MAX.scroll(LEDMatrixDriver::scrollDirection::scrollLeft);
+    else
     {
-      if (TimeFlag & 0x01)
-        //ShowDigit(slide, pNew_s1,  pOld_s1,  DESIGN[DisplayN][14], DESIGN[DisplayN][15], width_s, height_s);
-        ShowDigit(slide, pNew_s1,  pOld_s1,
-          pgm_read_byte_near(DESIGN[DisplayN] + 14),
-          pgm_read_byte_near(DESIGN[DisplayN] + 15), width_s, height_s);
-      if (TimeFlag & 0x02)
-        //ShowDigit(slide, pNew_s10, pOld_s10, DESIGN[DisplayN][12], DESIGN[DisplayN][13], width_s, height_s);
-        ShowDigit(slide, pNew_s10, pOld_s10,
-          pgm_read_byte_near(DESIGN[DisplayN] + 12),
-          pgm_read_byte_near(DESIGN[DisplayN] + 13), width_s, height_s);
-    }
-    //if (DESIGN[DisplayN][ 6] != 0xFF)
-    if (pgm_read_byte_near(DESIGN[DisplayN] +  6) != 0xFF)
-    {
-      if (TimeFlag & 0x04)
-        //ShowDigit(slide, pNew_m1,  pOld_m1,  DESIGN[DisplayN][ 9], DESIGN[DisplayN][10], width_m, height_m);
-        ShowDigit(slide, pNew_m1,  pOld_m1,
-          pgm_read_byte_near(DESIGN[DisplayN] +  9),
-          pgm_read_byte_near(DESIGN[DisplayN] + 10), width_m, height_m);
-      if (TimeFlag & 0x08)
-        //ShowDigit(slide, pNew_m10, pOld_m10, DESIGN[DisplayN][ 7], DESIGN[DisplayN][ 8], width_m, height_m);
-        ShowDigit(slide, pNew_m10, pOld_m10,
-          pgm_read_byte_near(DESIGN[DisplayN] +  7),
-          pgm_read_byte_near(DESIGN[DisplayN] +  8), width_m, height_m);
-    }
-    //if (DESIGN[DisplayN][ 1] != 0xFF)
-    if (pgm_read_byte_near(DESIGN[DisplayN] +  1) != 0xFF)
-    {
-      if (TimeFlag & 0x10)
-        //ShowDigit(slide, pNew_h1,  pOld_h1,  DESIGN[DisplayN][ 4], DESIGN[DisplayN][ 5], width_h, height_h);
-        ShowDigit(slide, pNew_h1,  pOld_h1,
-          pgm_read_byte_near(DESIGN[DisplayN] +  4),
-          pgm_read_byte_near(DESIGN[DisplayN] +  5), width_h, height_h);
-      if (TimeFlag & 0x20)
-        //ShowDigit(slide, pNew_h10, pOld_h10, DESIGN[DisplayN][ 2], DESIGN[DisplayN][ 3], width_h, height_h);
-        ShowDigit(slide, pNew_h10, pOld_h10, 
-          pgm_read_byte_near(DESIGN[DisplayN] +  2),
-          pgm_read_byte_near(DESIGN[DisplayN] +  3), width_h, height_h);
-    }
+      if (TimeFlag == 0xFF) MAX.clear();
 
-    if (showIt) MAX.display();
+      ShowDP(true);           // display the DP
+      ShowOptions(TimeFlag);  // dispaly the line of seconds (for tiny fonts only)
+    }
+    
+    //byte slide = 1; if (SlideShow && TimeFlag != 0xFF) slide = 8;
+    byte slide = 1; if (TimeFlag != 0xFF) slide = 8;
+    unsigned long timerStamp = millis();
+    while (slide--)
+    {
+      //if (DESIGN[DisplayN][11] != 0xFF)
+      if (pgm_read_byte_near(DESIGN[DisplayN] + 11) != 0xFF)
+      {
+        if (TimeFlag & 0x01)
+          //ShowDigit(slide, pNew_s1,  pOld_s1,  DESIGN[DisplayN][14], DESIGN[DisplayN][15], width_s, height_s);
+          ShowDigit(slide, pNew_s1,  pOld_s1,
+                    pgm_read_byte_near(DESIGN[DisplayN] + 14),
+                    pgm_read_byte_near(DESIGN[DisplayN] + 15), width_s, height_s);
+        if (TimeFlag & 0x02)
+          //ShowDigit(slide, pNew_s10, pOld_s10, DESIGN[DisplayN][12], DESIGN[DisplayN][13], width_s, height_s);
+          ShowDigit(slide, pNew_s10, pOld_s10,
+                    pgm_read_byte_near(DESIGN[DisplayN] + 12),
+                    pgm_read_byte_near(DESIGN[DisplayN] + 13), width_s, height_s);
+      }
+      //if (DESIGN[DisplayN][ 6] != 0xFF)
+      if (pgm_read_byte_near(DESIGN[DisplayN] +  6) != 0xFF)
+      {
+        if (TimeFlag & 0x04)
+          //ShowDigit(slide, pNew_m1,  pOld_m1,  DESIGN[DisplayN][ 9], DESIGN[DisplayN][10], width_m, height_m);
+          ShowDigit(slide, pNew_m1,  pOld_m1,
+                    pgm_read_byte_near(DESIGN[DisplayN] +  9),
+                    pgm_read_byte_near(DESIGN[DisplayN] + 10), width_m, height_m);
+        if (TimeFlag & 0x08)
+          //ShowDigit(slide, pNew_m10, pOld_m10, DESIGN[DisplayN][ 7], DESIGN[DisplayN][ 8], width_m, height_m);
+          ShowDigit(slide, pNew_m10, pOld_m10,
+                    pgm_read_byte_near(DESIGN[DisplayN] +  7),
+                    pgm_read_byte_near(DESIGN[DisplayN] +  8), width_m, height_m);
+      }
+      //if (DESIGN[DisplayN][ 1] != 0xFF)
+      if (pgm_read_byte_near(DESIGN[DisplayN] +  1) != 0xFF)
+      {
+        if (TimeFlag & 0x10)
+          //ShowDigit(slide, pNew_h1,  pOld_h1,  DESIGN[DisplayN][ 4], DESIGN[DisplayN][ 5], width_h, height_h);
+          ShowDigit(slide, pNew_h1,  pOld_h1,
+                    pgm_read_byte_near(DESIGN[DisplayN] +  4),
+                    pgm_read_byte_near(DESIGN[DisplayN] +  5), width_h, height_h);
+        if (TimeFlag & 0x20)
+          //ShowDigit(slide, pNew_h10, pOld_h10, DESIGN[DisplayN][ 2], DESIGN[DisplayN][ 3], width_h, height_h);
+          ShowDigit(slide, pNew_h10, pOld_h10,
+                    pgm_read_byte_near(DESIGN[DisplayN] +  2),
+                    pgm_read_byte_near(DESIGN[DisplayN] +  3), width_h, height_h);
+      }
 
-    if (slide) while ((unsigned long)(millis() - timerStamp) < SLIDE_SPEED);
-    timerStamp = millis();
+      if (showIt) MAX.display();
+
+      if      (slide)     while ((unsigned long)(millis() - timerStamp) < SLIDE_SPEED);
+      else if (SlideShow) while ((unsigned long)(millis() - timerStamp) < SCROLL_SPEED);
+      timerStamp = millis();
+    }
   }
-
-  TimeFlag = 0;      // reset the flag, it will get new value at next "computeTime"
+  
+  SlideShow = 0;
+  TimeFlag  = 0;     // reset the flag, it will get new value at next "computeTime"
 }
 
 //=========> display time digit with a slide show
@@ -884,7 +922,7 @@ void ShowDigit(byte slide, byte* pNewDigit, byte* pOldDigit, byte coordX, byte c
 
     // send this segment
     byte i = width;
-    while (i--) DrawPixel(coordX - i, coordY + n, bitRead(code, i));
+    while (i--) DrawPixel(coordX - i + SlideShow, coordY + n, bitRead(code, i));
   }
 }
 
@@ -903,9 +941,10 @@ void RunAlarm()
     Alarm1Flag = false;
     digitalWrite(PIN_BUZZER, LOW);
     MAX.setIntensity(Intensity);
-    if (SHOW_NOTE) StartMessage();  // stopped with notes displayed, scroll them off
-    SlideShow  = LastSlideShow;
-    StopMessage();
+    if (SHOW_NOTE) WipeScreen();  // stopped with notes displayed, scroll them off
+    //SlideShow  = LastSlideShow;
+    //StopMessage();
+    SlideShow = true;
     //ShowTime(0xFF, true);     // show time (all digits, display)
   }
   else if (Alarm1Flag > 1)                   // ===> RUN the Alarm
@@ -920,13 +959,13 @@ void RunAlarm()
       if (Alarm1Flag == 2)                   // ===> START the Alarm
       {
         digitalWrite(PIN_BUZZER, HIGH);
-        LastSlideShow = SlideShow;
-        SlideShow     = false;
-        //StartMessage();
+        //LastSlideShow = SlideShow;
+        //SlideShow     = false;
+        //WipeScreen();
 
-        if (SHOW_NOTE) 
+        if (SHOW_NOTE)
         {
-          StartMessage();
+          WipeScreen();
         }
       }
 
@@ -948,12 +987,12 @@ void ShowDP(byte isOn)
 {
   // show / hide the DP - dotW-H,x,y1,y2
   /*
-  byte   dot_width  = DESIGN[DisplayN][16];
-  byte   dot_height = DESIGN[DisplayN][17];
-  byte   dot_x      = DESIGN[DisplayN][18];
-  byte   dot_y1     = DESIGN[DisplayN][19];
-  byte   dot_y2     = DESIGN[DisplayN][20];
-  //*/
+    byte   dot_width  = DESIGN[DisplayN][16];
+    byte   dot_height = DESIGN[DisplayN][17];
+    byte   dot_x      = DESIGN[DisplayN][18];
+    byte   dot_y1     = DESIGN[DisplayN][19];
+    byte   dot_y2     = DESIGN[DisplayN][20];
+    //*/
   byte   dot_width  = pgm_read_byte_near(DESIGN[DisplayN] + 16);
   byte   dot_height = pgm_read_byte_near(DESIGN[DisplayN] + 17);
   byte   dot_x      = pgm_read_byte_near(DESIGN[DisplayN] + 18);
@@ -967,16 +1006,16 @@ void ShowDP(byte isOn)
 
   // show / hide the alarm dots - al1x,y,al2x,y,timeline
   /*
-  byte   al1_x     = DESIGN[DisplayN][21];
-  byte   al1_y     = DESIGN[DisplayN][22];
-  byte   al2_x     = DESIGN[DisplayN][23];
-  byte   al2_y     = DESIGN[DisplayN][24];
-  //*/
+    byte   al1_x     = DESIGN[DisplayN][21];
+    byte   al1_y     = DESIGN[DisplayN][22];
+    byte   al2_x     = DESIGN[DisplayN][23];
+    byte   al2_y     = DESIGN[DisplayN][24];
+    //*/
   byte   al1_x     = pgm_read_byte_near(DESIGN[DisplayN] + 21);
   byte   al1_y     = pgm_read_byte_near(DESIGN[DisplayN] + 22);
   byte   al2_x     = pgm_read_byte_near(DESIGN[DisplayN] + 23);
   byte   al2_y     = pgm_read_byte_near(DESIGN[DisplayN] + 24);
-  
+
   byte   color     = (isOn) ? BLACK : WHITE;
   DrawPixel(al1_x, al1_y, (Alarm1Flag) ? color : BLACK);
   DrawPixel(al2_x, al2_y, (Alarm2Flag) ? color : BLACK);
@@ -989,10 +1028,10 @@ void ShowOptions(byte flag)
 
   // show / hide the options - al1x,y,al2x,y,opt_xy
   /*
-  byte   opt_flag   = DESIGN[DisplayN][25];
-  byte   opt_x      = DESIGN[DisplayN][26];
-  byte   opt_y      = DESIGN[DisplayN][27];
-  //*/
+    byte   opt_flag   = DESIGN[DisplayN][25];
+    byte   opt_x      = DESIGN[DisplayN][26];
+    byte   opt_y      = DESIGN[DisplayN][27];
+    //*/
   byte   opt_flag   = pgm_read_byte_near(DESIGN[DisplayN] + 25);
   byte   opt_x      = pgm_read_byte_near(DESIGN[DisplayN] + 26);
   byte   opt_y      = pgm_read_byte_near(DESIGN[DisplayN] + 27);
@@ -1080,39 +1119,6 @@ void ShowOptions(byte flag)
 
 
 
-void StartMessage()
-{
-  // scroll TIME to left, end with clear SCREEN
-  unsigned long timerStamp = millis(); //return;
-  byte   counter  = NB_MATRIX * 8;
-  while (counter--)
-  {
-    while ((unsigned long)(millis() - timerStamp) < SCROLL_SPEED);
-    timerStamp = millis();
-    MAX.scroll(LEDMatrixDriver::scrollDirection::scrollLeft);
-    MAX.display();
-  }
-}
-
-void StopMessage()
-{
-  // scroll SCREEN to left, end with TIME
-  unsigned long timerStamp = millis(); //return;
-  byte   counter  = NB_MATRIX * 8;
-  while (counter--)
-  {
-    while ((unsigned long)(millis() - timerStamp) < SCROLL_SPEED);
-    timerStamp = millis();
-    ShowTime(0xFF, false);
-    int    n = counter;
-    while (n-- > 0) MAX.scroll(LEDMatrixDriver::scrollDirection::scrollRight);
-    MAX.display();
-  }
-  TimeFlag != 0xFF;
-}
-
-
-
 void SplashScreen()
 {
   byte* pLogo = EPACLOGO;
@@ -1145,7 +1151,7 @@ void SplashScreen()
   //setFont(*FONT_NARROW);
   //setFont(*FONT_DIGITAL);
   //setFont(*FONT_REGULAR);
-  
+
   setFont(*FONT_REGULAR);
   S_Text = "ArduinO' ClocK";
   ScrollText(1, false, true);     // not append, scroll untill offScreen
@@ -1157,7 +1163,7 @@ void SplashScreen()
 void ShowDate()
 {
   setFont(*FONT_REGULAR);
-  StartMessage();
+  WipeScreen();
 
   // use convertText() to manage accent and special chars alike "°"
   String space    = String(" ");
@@ -1166,7 +1172,7 @@ void ShowDate()
                      "juillet", convertText("août"), "septembre", "octobre", "novembre", convertText("décembre")
                     };
   S_Text = "Date: ";
-  
+
   switch (DateN)
   {
     case 0:
@@ -1185,15 +1191,15 @@ void ShowDate()
   space    = "";
   //sDoW[]   = "";
   //sMonth[] = "";
-  
   ScrollText(0, false, true);
-  StopMessage();
+  
+  SlideShow = true;
 }
 
 void ShowTemp()
 {
   setFont(*FONT_REGULAR);
-  StartMessage(); //return;
+  WipeScreen();
 
   // use convertText() to manage accent and special chars alike "°"
   float  temperature = -23.674574;
@@ -1203,13 +1209,13 @@ void ShowTemp()
   temperature       -= temp10;
   temperature       *= 10;
   int    temp1       = int(temperature);
-  
+
   S_Text             = "Temp: ";
   if (minus) S_Text += "-";
-  S_Text            += String(temp10) + "." + String(temp1) + convertText("°C");
-
+  S_Text            += String(temp10) + "." + String(temp1) + convertText(" °C");
   ScrollText(0, false, true);
-  StopMessage();
+  
+  SlideShow = true;
 }
 
 void ShowNote()
