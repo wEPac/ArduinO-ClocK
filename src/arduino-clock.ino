@@ -582,13 +582,10 @@ int getCharWidth(byte ascII, byte* pChar)
 
   while (char_width--)                    // check for the 1st byte is not empty
   {
-    //if (font[ascII][char_width])
-    if (pgm_read_byte_near(pChar + char_width))
-    {
-      char_width++;
-      break;
-    }
+    //if (font[ascII][char_width]) break;
+    if (pgm_read_byte_near(pChar + char_width)) break;
   }
+  char_width++;
   if      (ascII ==  1) char_width++;     // give extra spacing for "!"
   else if (ascII == 14) char_width++;     // give extra spacing for "."
 
