@@ -17,7 +17,7 @@ It is displaying digits with sliding effect and many options can be set, like de
 
 A DS3231 RTC module can be added easily, to preserve time/date settings and to have accurate calendar.
 
-
+______________________________________________________________________________________________________
 TODO
   - chronometer
   - a RLD (Resistor Light Dependent)
