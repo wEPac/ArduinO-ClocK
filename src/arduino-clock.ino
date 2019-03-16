@@ -237,7 +237,7 @@ void setup()
   //MAX.setDecode(0x00);  // Disable decoding for all digits.
 
   //testText();
-  //SplashScreen();
+  SplashScreen();
 
   MAX.setIntensity(Intensity);
   //ComputeTime(true);          // true: 60s will increase minute counter
@@ -1134,15 +1134,15 @@ void SplashScreen()
   MAX.display();
   delay(3000);
 
-  byte  x       = 40;
-  byte* pSprite = *PACMAN;
+  i             = 40;
   byte  spriteN = 0;
   byte  dir     = 1;
-  while (x--)
+  while (i--)
   {
-    MAX.setColumn(x - 9, 0x00);
+    MAX.setColumn(i - 9, 0x00);
     byte  idx = 9;
-    while (idx--) MAX.setColumn(x - 8 + idx, pgm_read_byte_near(pSprite + spriteN * 9 + idx));
+    //while (idx--) MAX.setColumn(i - 8 + idx, pgm_read_byte_near(pSprite + spriteN * 9 + idx));
+    while (idx--) MAX.setColumn(i - 8 + idx, pgm_read_byte_near(*PACMAN + spriteN * 9 + idx));
     if      (spriteN == 3) dir = - 1;
     else if (spriteN == 0) dir =   1;
     spriteN = spriteN + dir;
