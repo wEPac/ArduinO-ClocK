@@ -114,7 +114,7 @@ byte    TimeFlag;               // to know what digit changed and so, we must di
 
 //--- Date
 #define DATE_MAX       =  3;
-byte    DateN          =  1;    // 0:alpha, 1:DD-MM-YYYY, 2:MM-DD-YYYY
+byte    DateN          =  0;    // 0:alpha, 1:DD-MM-YYYY, 2:MM-DD-YYYY
 byte    DateDoW        =  3;    // 0:monday
 byte    DateDay        =  14;
 byte    DateMonth      =  1;    // 0:january
@@ -133,7 +133,7 @@ byte    TimeSeconds1   =  0;
 #define ALARM_MAX      30000    // how long we ring in millis (shouldnt be < 5000s)
 unsigned long AlarmMillis;      // tracks the time to stop the alarm
 byte    Alarm1Flag     = true;  // set alarm 1, on:true / off:false
-byte    Alarm2Flag     = false;  // set alarm 2, on:true / off:false
+byte    Alarm2Flag     = true;  // set alarm 2, on:true / off:false
 byte    AlarmHours10   =  2;
 byte    AlarmHours1    =  3;
 byte    AlarmMinutes10 =  5;
@@ -1091,10 +1091,9 @@ void StartMessage()
     timerStamp = millis();
     MAX.scroll(LEDMatrixDriver::scrollDirection::scrollLeft);
     MAX.display();
-    //while ((unsigned long)(millis() - timerStamp) < SCROLL_SPEED);
-    //timerStamp = millis();
   }
 }
+
 void StopMessage()
 {
   // scroll SCREEN to left, end with TIME
@@ -1108,8 +1107,6 @@ void StopMessage()
     int    n = counter;
     while (n-- > 0) MAX.scroll(LEDMatrixDriver::scrollDirection::scrollRight);
     MAX.display();
-    //while ((unsigned long)(millis() - timerStamp) < SCROLL_SPEED);
-    //timerStamp = millis();
   }
   TimeFlag != 0xFF;
 }
