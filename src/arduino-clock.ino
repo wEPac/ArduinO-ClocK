@@ -71,7 +71,7 @@
 
 //-----------------------------------------------------------------------
 
-#define  DEBUG
+//#define  DEBUG
 
 
 
@@ -110,49 +110,40 @@ LEDMatrixDriver MAX(NB_MATRIX, CS_PIN, REVERSED);
 
 
 //--- RTC management
-#define TIME_SPEED    1000      // 1000 == 1s, this interval shouldnt be changed
-#define DOT_SPEED     2 * (TIME_SPEED / 3)  // after a while we set DP off, pretty with 2/3 rate
+#define TIME_SPEED     1000      // 1000 == 1s, this interval shouldnt be changed
+#define DOT_SPEED      2 * (TIME_SPEED / 3)  // after a while we set DP off, pretty with 2/3 rate
 unsigned long PreviousMillis;   // tracks the time to prevent roll up after 50 days
 byte    TimeFlag;               // to know what digit changed and so, we must display it
 
-//--- Date
+unsigned long UnixTime;         // time since 01/01/1970 in seconds
+byte    DoW;                    // Day of the Week
+
 #define DATE_MAX       =  3;
 byte    DateN          =  0;    // 0:alpha, 1:DD-MM-YYYY, 2:MM-DD-YYYY
-byte    DateDoW        =  3;    // 0:monday
-byte    DateDay        =  14;
-byte    DateMonth      =  1;    // 0:january
-int     DateYear       =  2019;
 
-//--- Time
-byte    TimeHours10    =  2;
-byte    TimeHours1     =  3;
-byte    TimeMinutes10  =  5;
-byte    TimeMinutes1   =  7;
-byte    TimeSeconds10  =  0;
-byte    TimeSeconds1   =  0;
+//--- About Date/Time
+struct  DateTime {      //  format    example
+  int  y;   // Year: 0~n    ####      2019
+  byte m;   // Month:1~12   #~##      3
+  byte d;   // Day:  1~31   #~##      27
+  byte hh;  // hour: 0~23   #~##      8
+  byte mm;  // min:  0~60   #~##      0
+  byte ss;  // s:    0~60   #~##      12
+};
+//struct  Tbuf   DateTime;
+struct  DateTime  Tbuff;            // used to compute in some sub routines
+struct  DateTime  Tnow     = {2019, 03, 17,     23, 58, 00};  // {Year, Month, Day,     h, min, s}
+struct  DateTime  Told     = Tnow;  // record old digits to make the slide show
+struct  DateTime  Talarm1  = {2019, 03, 17,     23, 59, 00};  // {Year, Month, Day,     h, min, s}
+struct  DateTime  Talarm2  = {2019, 03, 17,     24, 01, 00};  // {Year, Month, Day,     h, min, s}
 
-
-//--- Alarm
 #define ALARM_MAX      30000    // how long we ring in millis (shouldnt be < 5000s)
 unsigned long AlarmMillis;      // tracks the time to stop the alarm
 byte    Alarm1Flag     = true;  // set alarm 1, on:true / off:false
 byte    Alarm2Flag     = true;  // set alarm 2, on:true / off:false
-byte    AlarmHours10   =  2;
-byte    AlarmHours1    =  3;
-byte    AlarmMinutes10 =  5;
-byte    AlarmMinutes1  =  8;
-byte    AlarmSeconds10;
-byte    AlarmSeconds1;
-
-
-//--- Recording old digits to make the slide show
-byte    LastHours10    =  0;
-byte    LastHours1     =  0;
-byte    LastMinutes10  =  0;
-byte    LastMinutes1   =  0;
-byte    LastSeconds10  =  0;
-byte    LastSeconds1   =  0;
-
+byte    Alarm1Repeat   = false; // 0x00:no alarm, 0x01:rpt min, 0x02:rpt h, 0x04:rpt day, 0x08:rpt DoW,
+                                //      rpt, rpt week, rpt month
+byte    Alarm2Repeat   = true;  // true: alarm flag stay on
 
 //--- About Display
 #define WHITE          0xFF
@@ -160,8 +151,10 @@ byte    LastSeconds1   =  0;
 #define INTENSITY_MAX  8        // 0~15 but upon 7 there is no real change
 byte    Intensity      = 0;     // 0~7
 
-#define DISPLAY_MAX    6        // how many design we have
-byte    DisplayN       = 0;     // index to show design from array DESIGN[][] settings
+#define IS_CELSIUS     true
+
+#define DISPLAY_MAX    5 + IS_CELSIUS // how many design we have (max 6, 5 for °F)
+byte    DisplayN       = 5;     // index to show design from array DESIGN[][] settings
 
 // DesignFont[] contain the selected font index used for a design in the array DESIGN[]
 byte    DesignFont[DISPLAY_MAX] = {2, 0, 1, 1, 0, 0};   // font = FONT_DIGIT[fidx + DesignFont[DisplayN]] 
@@ -187,19 +180,16 @@ const byte DESIGN[][DESIGN_MAX] PROGMEM =  // DisplayN will give the font and co
   //         2      4        6      8     10        12     14       16     18    20       22     24         26  
   {4,    0,  0, 0,  8, 0,    0, 18, 0, 26, 0,   -1,  0, 0,  0, 0,    2, 2, 15, 1, 4,   15, 7, 16, 7,    0,  0, 0}, // 0 h:m
   {4,   -1,  0, 0,  0, 0,    0,  0, 0,  8, 0,    0, 18, 0, 26, 0,    2, 2, 15, 1, 4,   15, 7, 16, 7,    0,  0, 0}, // 1 m:s
-  {2,    6,  0, 0,  5, 0,    6, 12, 0, 17, 0,   10, 23, 2, 28, 2,    1, 2, 10, 1, 4,   30, 0, 31, 0,    0,  0, 0}, // 2 h:m:s
-  {2,    6,  0, 0,  5, 0,    6, 12, 0, 17, 0,   -1,  0, 0,  0, 0,    1, 2, 10, 1, 4,   30, 0, 31, 0,    2, 25, 7}, // 3 h:m:T
   {2,   14,  1, 1,  8, 1,   14, 18, 1, 25, 1,   -1,  0, 0,  0, 0,    2, 1, 15, 2, 4,   15, 0, 16, 0,    1,  0, 7}, // 4 h:m + tL
   {2,   -1,  0, 0,  0, 0,   14,  1, 1,  8, 1,   14, 18, 1, 25, 1,    2, 1, 15, 2, 4,   15, 0, 16, 0,    1,  0, 7}, // 5 m:s + tL
+  {2,    6,  0, 0,  5, 0,    6, 12, 0, 17, 0,   10, 23, 2, 28, 2,    1, 2, 10, 1, 4,   30, 0, 31, 0,    0,  0, 0}, // 2 h:m:s
+  {2,    6,  0, 0,  5, 0,    6, 12, 0, 17, 0,   -1,  0, 0,  0, 0,    1, 2, 10, 1, 4,   30, 0, 31, 0,    2, 25, 7}, // 3 h:m:T
 };
 
 
 //--- About Time digit
 #define SLIDE_SPEED   40        // 20~100 how much to slower digits sliding (shouldnt be slower than 20 = 1/3 s)
-//byte    SlideShow     = true;   // 0~1 to change digit with or without a slide show
-//byte    LastSlideShow;
-byte    SlideShow;
-//int    SlideShow;
+byte    SlideShow;              // true: Time will come on screen, scrolled from right to center
 
 //--- About Alpha Text
 #define SCROLL_SPEED  50        // 20~80, how to slower scrolling text
@@ -220,6 +210,9 @@ byte*   pBuffer;                // frameBuffer address
 
 void setup()
 {
+#ifdef DEBUG
+  Serial.begin(115200);
+#endif
   //--- initialize I/O pins
   pinMode(SET_DISPLAY,  INPUT_PULLUP);
   pinMode(SET_FONT,     INPUT_PULLUP);
@@ -244,26 +237,38 @@ void setup()
   //StopMessage();
   //ShowTime(0xFF, true);
   
+  setTime();                    // set the Unix Time ref, 1970-01-01 0h:00m00s
+  getTime();
+  Tnow = Tbuff;
+  PreviousMillis = millis();    // the RTC reference now
+  
   SlideShow = true;             // move the time on screen from right to center
   ShowTime(0xFF, true);
-
-  PreviousMillis = millis();  // the RTC reference now
 }
 
 void loop()
 {
   //testText();
+  Tbuff = Tnow;
   ComputeTime(true);           // computes new digits and set TimeFlag for them
+  Tnow  = Tbuff;
 
 
   if (Alarm1Flag == 1)         // check if we must ring for the alarm
   {
-    if ((AlarmHours10 == TimeHours10) && (AlarmHours1 == TimeHours1)
-        && (AlarmMinutes10 == TimeMinutes10) && (AlarmMinutes1 == TimeMinutes1)
-        && (TimeSeconds1 == 0))
+    if ((Talarm1.hh == Tnow.hh) && (Talarm1.mm == Tnow.mm) && (Talarm1.hh == Tnow.ss))
     {
       digitalWrite(PIN_BUZZER, HIGH); // ===> START the Alarm
       Alarm1Flag++;
+      AlarmMillis   = PreviousMillis;
+    }
+  }
+  if (Alarm2Flag == 1)         // check if we must ring for the alarm
+  {
+    if ((Talarm2.hh == Tnow.hh) && (Talarm2.mm == Tnow.mm) && (Talarm2.hh == Tnow.ss))
+    {
+      digitalWrite(PIN_BUZZER, HIGH); // ===> START the Alarm
+      Alarm2Flag++;
       AlarmMillis   = PreviousMillis;
     }
   }
@@ -279,23 +284,26 @@ void loop()
   byte change_flag = 0xFF;
 
   //---> Run the alarm
-  if (Alarm1Flag > 1)
+  if      (Alarm1Flag > 1 || Alarm2Flag > 1)
   {
     RunAlarm();
     change_flag  = 0x00;     // dont display DP, lock settings
   }
-  else if (TimeMinutes1 & 0x01 && TimeSeconds10 == 3 && TimeSeconds1 == 0)
+  //---> 
+  else if (!(Tnow.mm & 0x01) && Tnow.ss == 31)
   {
     ShowDate();
-    change_flag  = 0x00;     // when parity displays date, dont display DP, lock settings
+    change_flag  = 0x00;     // when no parity displays date, dont display DP, lock settings
     ShowTime(0xFF, true);
   }
-  else if (!(TimeMinutes1 & 0x01) && TimeSeconds10 == 3 && TimeSeconds1 == 0)
+  //---> 
+  else if ( (Tnow.mm & 0x01) && Tnow.ss == 31)
   {
     ShowTemp();
-    change_flag  = 0x00;     // when no parity displays temperature, dont display DP, lock settings
+    change_flag  = 0x00;     // when parity displays temperature, dont display DP, lock settings
     ShowTime(0xFF, true);
   }
+  //---> 
   else ShowTime(0x00, true); // ===> show casual time (digits accorded to TimeFlag, display time)
 
 
@@ -319,7 +327,7 @@ void loop()
     //--- Adj Intensity
     if ((change_flag & 0x02) && digitalRead(SET_BRIGHT) == LOW)
     {
-      change_flag ^= 0x02;  // we do it once only, so we set the flag
+      change_flag ^= 0x02;          // we do it once only, so we set the flag
       Intensity++;
       Intensity   %= INTENSITY_MAX;
       MAX.setIntensity(Intensity);  // set new brightness
@@ -349,19 +357,25 @@ void loop()
     if ((change_flag & 0x10) && digitalRead(SET_MIN) == LOW)
     {
       change_flag ^= 0x10;        // we do it once only, so we set the flag
-      LastMinutes1 = TimeMinutes1;
-      TimeMinutes1++;
+      Told.mm = Tnow.mm;
+      Tnow.mm++;
+      Tbuff   = Tnow;
+      TimeFlag |= 0x04;
       ComputeTime(false);
-      ShowTime(0x04, true);       // show current setting
+      Tnow    = Tbuff;
+      ShowTime(false, true);       // show current setting
     }
 
     if ((change_flag & 0x20) && digitalRead(SET_HOUR) == LOW)
     {
-      change_flag ^= 0x20;  // we do it once only, so we set the flag
-      LastHours1   = TimeHours1;
-      TimeHours1++;
+      change_flag ^= 0x20;         // we do it once only, so we set the flag
+      Told.hh = Tnow.hh;
+      Tnow.hh++;
+      Tbuff   = Tnow;
+      TimeFlag |= 0x10;
       ComputeTime(false);
-      ShowTime(0x10, true);       // show current setting
+      Tnow    = Tbuff;
+      ShowTime(false, true);       // show current setting
     }
 
     //currentMillis = millis();
@@ -369,10 +383,11 @@ void loop()
 
 endLoop:
   //---> set new time ref => + 1s
-  PreviousMillis += 1000;         // we wont use millis() here to keep our RTC accurate
-  TimeFlag       |= 0x01;         // TimeSeconds1 will always increase inside the loop => flag it
-  LastSeconds1    = TimeSeconds1; // save last value for the slide show
-  TimeSeconds1++;                 // yes yes, we re older now from 1 second!!!
+  PreviousMillis += 1000;          // we wont use millis() here to keep our RTC accurate, add 1s for each loop
+  Told = Tnow;                     // save current time to slide digits
+  Tnow.ss++;                       // add 1s to current time
+  TimeFlag       |= 0x01;          // seconds will always increase inside the loop => flag it to force digit on screen
+  UnixTime++;                      // virtual RTC, UnixTime, add 1s for each loop
 }
 
 
@@ -395,20 +410,6 @@ void ClearScreen()
   MAX.display();
 }
 
-void WipeScreen()
-{
-  // scroll screen content to left, end with wiped SCREEN
-  unsigned long timerStamp = millis();
-  byte   counter  = NB_MATRIX * 8;
-  while (counter--)
-  {
-    while ((unsigned long)(millis() - timerStamp) < SCROLL_SPEED);
-    timerStamp = millis();
-    MAX.scroll(LEDMatrixDriver::scrollDirection::scrollLeft);
-    MAX.display();
-  }
-}
-
 void FillScreen(byte mask1, byte mask2)
 {
   byte n = NB_MATRIX * 4;
@@ -423,6 +424,20 @@ void ReverseScreen()
 {
   int idx = 8 * NB_MATRIX;
   while (idx--) pBuffer[idx] ^= 0xFF;
+}
+
+void WipeScreen()
+{
+  // scroll screen content to left, end with wiped SCREEN
+  unsigned long timerStamp = millis();
+  byte   counter  = NB_MATRIX * 8;
+  while (counter--)
+  {
+    while ((unsigned long)(millis() - timerStamp) < SCROLL_SPEED / 2);
+    timerStamp = millis();
+    MAX.scroll(LEDMatrixDriver::scrollDirection::scrollLeft);
+    MAX.display();
+  }
 }
 
 void DrawPixel(byte coordX, byte coordY, byte isShown)
@@ -474,42 +489,6 @@ void DrawSquareFilled(byte coordX, byte coordY, byte lenX, byte lenY, byte isSho
 //-----------------------------------------------------------------------
 
 
-
-/*
-  void testText()
-  {
-  byte   val     = 27;
-  String text    = "Gn" + String(char(128)) + String(char(128));
-
-  text = String(val) + "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_'abcdefghijklmnopqrstuvwxyz{|}~" + String(char(128)) + String(char(127));
-  text = convertText(String("°àâèéêëîïùû"));
-  //text = "Gnnn" + convertText("ééééé... aïe!");
-
-  randomSeed(analogRead(0));
-  byte disp = random(40) / 10;
-  //disp = 3;
-  switch (disp)
-  {
-    case 0:
-      setFont(*FONT_TINY);
-      text.toUpperCase();
-      break;
-    case 1:
-      setFont(*FONT_DIGITAL);
-      break;
-    case 2:
-      setFont(*FONT_NARROW);
-      break;
-    case 3:
-      setFont(*FONT_REGULAR);
-      break;
-  }
-
-  byte counter = 3;
-  while (counter--) ScrollText(text, (8 - FontHeight) / 2, false, true);     // not append, scroll untill offScreen
-  delay(10000);
-  }
-  //*/
 
 void setFont(byte* font_name)
 {
@@ -644,7 +623,7 @@ String convertText(String text)
   return text;
 }
 /*
-  // A little tool to find the correspondence
+  // A little tool to find the correspondence for special char
   void giveCharset()
   {
   Serial.begin(57600);
@@ -673,10 +652,135 @@ String convertText(String text)
 
 
 //-----------------------------------------------------------------------
+// Times functions - virtual RTC, UnixTime
+//-----------------------------------------------------------------------
+
+
+
+float getTemp(byte isCelsius)
+{
+  unsigned int wADC;
+  int          t;
+  // The internal temperature has to be used with the internal reference of 1.1V.
+  // Channel 8 can not be selected with the analogRead function yet.
+
+  // Set the internal reference and mux.
+  ADMUX = (_BV(REFS1) | _BV(REFS0) | _BV(MUX3));
+  ADCSRA |= _BV(ADEN);  // enable the ADC
+
+  delay(20);                        // wait for voltages to become stable.
+  ADCSRA |= _BV(ADSC);              // Start the ADC
+  while (bit_is_set(ADCSRA,ADSC));  // Detect end-of-conversion
+  wADC = ADCW;                      // Reading register "ADCW"
+
+  // The offset of 324.31 could be wrong. It is just an indication.
+
+  //return float((wADC - 324.31) / 1.22);  // in °C
+  float temperature = (wADC - 324.31) / 1.22;   // in °C
+  if (isCelsius) return temperature;
+  return (temperature * 9) / 5.0 + 32;          // in °F
+}
+
+void setTime()
+{ 
+  // Use the content from Tnow to compute UnixTime
+  unsigned long SECS_PER_DAY  = 86400;
+  unsigned long SECS_PER_HOUR = 3600;
+  unsigned long SECS_PER_MIN  = 60;
+  int i;
+  UnixTime = 0;
+  
+  i = Tnow.y;    // Unix Time 1970/01/01, 1h00:00 jeudi 
+  while (i-- > 1970) UnixTime += (LeapYear(i) ? 366 : 365) * SECS_PER_DAY;
+
+  i = Tnow.m;   // 1~12
+  while (--i)
+  {
+    if      (i == 2)
+      UnixTime += (LeapYear(Tnow.y) ? 29 : 28) * SECS_PER_DAY;
+    else if (i == 4 || i == 6 || i == 9 || i == 11)
+      UnixTime += 30 * SECS_PER_DAY;
+    else
+      UnixTime += 31 * SECS_PER_DAY;
+  }
+  UnixTime += (Tnow.d  - 1) * SECS_PER_DAY;  // 1~31
+  UnixTime += (Tnow.hh - 1) * SECS_PER_HOUR; // Unix Time 1970/01/01, 1h00:00 jeudi 
+  UnixTime += Tnow.mm * SECS_PER_MIN;
+  UnixTime += Tnow.ss;
+
+#ifdef DEBUG
+  Serial.println("==================");
+  //Serial.print("UNIX ref  = "); Serial.println(1552863480); //Serial.println("xxxx");
+  Serial.print("UNIX time = "); Serial.println(UnixTime);
+#endif
+}
+
+byte getTime()
+{
+  // Paste Date & Time into Tbuff, computed from UnixTime, return Day of the Week
+  unsigned long time = UnixTime;
+  unsigned int  days;
+  //unsigned long days;
+  
+  Tbuff.ss = time % 60;
+  time /= 60;
+  Tbuff.mm = time % 60;
+  time /= 60;
+  Tbuff.hh = time % 24 + 1;     // Unix Time 1970/01/01, 1h00:00 jeudi
+  time /= 24;
+  
+  DoW   = ((time + 4) % 7) + 1; // 1~7: // Unix Time 1970/01/01, 1h00:00 jeudi => + 4, 1st day is Sunday => +1
+
+  Tbuff.y = 0;
+  days    = 0;
+  while (time >= (days += (unsigned long)((LeapYear(Tbuff.y) ? 366 : 365)))) Tbuff.y++;
+  Tbuff.y += 1970;
+  
+  days -= (unsigned long)(LeapYear(Tbuff.y) ? 366 : 365);
+  time -= days; // days in the current year, day1 == 0
+  
+  Tbuff.m = 0;
+  days    = 0;
+  while (time >= days)
+  {
+    time -= days;
+    Tbuff.m++;
+    
+    days    = 31;
+    if      (Tbuff.m == 2) days = (LeapYear(Tbuff.y) ? 29 : 28);
+    else if (Tbuff.m == 4 || Tbuff.m == 6 || Tbuff.m == 9 || Tbuff.m == 11) days = 30;
+  }
+  
+  Tbuff.d = time + 2; // Unix Time 1970/01/01, 1h00:00 jeudi => +1, 1st day == 1
+#ifdef DEBUG
+  Serial.println("------------------");
+  //Serial.print("ref date = "); Serial.println("17 / 3 / 2019");
+  Serial.print("now date = ");
+  Serial.print(Tbuff.d); Serial.print(" / "); Serial.print(Tbuff.m); Serial.print(" / "); Serial.println(Tbuff.y);
+  Serial.print("now time = ");
+  Serial.print(Tbuff.hh); Serial.print(":"); Serial.print(Tbuff.mm); Serial.print(":"); Serial.println(Tbuff.ss);
+  Serial.print("DoW = "); Serial.println(DoW);
+#endif
+  return DoW;
+}
+
+byte getDoW()
+{
+  return getTime();
+}
+
+
+
+//-----------------------------------------------------------------------
 // Times functions - compute & display
 //-----------------------------------------------------------------------
 
 
+
+bool LeapYear(int year)
+{
+  return !((year % 4) && (!(year % 100) || (year % 400)));
+}
 
 void ComputeTime(bool full)
 {
@@ -686,89 +790,68 @@ void ComputeTime(bool full)
   full = true;
 #endif
 
-  if (!full)    // prevent time to change when we re setting it, allow to set s to zero as well
-  {
-    TimeSeconds1  = TimeSeconds10 = 0;
-    LastSeconds1  = 9;
-    LastSeconds10 = 5;
-  }
+  // Tbuff.y; Tbuff.m; Tbuff.d; Tbuff.hh; Tbuff.mm; Tbuff.ss;
+  //byte flag = 0;
 
-  if (TimeSeconds1  >= 10)
+  // prevent time to change when we re setting it, allow to set s to zero as well
+  if (!full)
   {
-    TimeSeconds1  = 0;
-    TimeFlag     |= 0x02;
-    LastSeconds10 = TimeSeconds10;
-    TimeSeconds10++;
+    Tbuff.ss  = 0;
+    TimeFlag &= ~0x01;
   }
-  if (TimeSeconds10 >=  6)
+  if (!(Tbuff.ss % 10))
   {
-    TimeSeconds10 = 0;
-    if (full)
+    TimeFlag |= (TimeFlag & 0x01) ? 0x02 : 0;
+    if (Tbuff.ss > 59)
     {
-      TimeFlag     |= 0x04;
-      LastMinutes1  = TimeMinutes1;
-      TimeMinutes1++;
+      Tbuff.ss = 0;
+      if (full)
+      {
+        TimeFlag |= 0x04;
+        Tbuff.mm++;
+      }
     }
   }
-  if (TimeMinutes1  >= 10)
+  if (!(Tbuff.mm % 10))
   {
-    TimeMinutes1  = 0;
-    TimeFlag     |= 0x08;
-    LastMinutes10 = TimeMinutes10;
-    TimeMinutes10++;
-  }
-  if (TimeMinutes10 >=  6)
-  {
-    TimeMinutes10 = 0;
-    if (full)
+    TimeFlag |= (TimeFlag & 0x04) ? 0x08 : 0;
+    if (Tbuff.mm > 59)
     {
-      TimeFlag     |= 0x10;
-      LastHours1    = TimeHours1;
-      TimeHours1++;
+      Tbuff.mm = 0;
+      if (full)
+      {
+          TimeFlag |= 0x10;
+          Tbuff.hh++;
+      }
     }
   }
-  if (TimeHours1    >= 10)
+  if (!(Tbuff.hh % 10) || Tbuff.hh > 23)
   {
-    TimeHours1    = 0;
-    TimeFlag     |= 0x20;
-    LastHours10   = TimeHours10;
-    TimeHours10++;
-  }
-  if (TimeHours10   >=  2 && TimeHours1    >=  4) // special case when we reach MidNight
-  {
-    TimeHours1    = 0;
-    TimeHours10   = 0;
-    TimeFlag     |= 0x30;
-    LastHours1    = TimeHours1;
-    LastHours10   = TimeHours10;
-    if (full)
+    TimeFlag |= (TimeFlag & 0x10) ? 0x20 : 0;
+    if (Tbuff.hh > 23)
     {
-      DateDoW       = (++DateDoW) % 7;
-      DateDay++;
+      Tbuff.hh = 0;
+      TimeFlag |= 0x30;
+      if (full)
+      {
+        Tbuff.d++;
+      }
     }
   }
-
-  // ======> here, using a DS36231 RTC, we should check date at midnight to adjust <======
-  if ( (DateDay >= 28 && DateMonth == 1 && (DateMonth % 4) != 0)
-       || (DateDay >= 29 && DateMonth == 1)
-       || (DateDay >= 30 && (DateMonth == 3 || DateMonth == 5 || DateMonth == 8 || DateMonth == 10))
-       || (DateDay >= 31))
+  
+  if (    (Tbuff.d > 27 && Tbuff.m == 2 && !LeapYear(Tbuff.y))
+       || (Tbuff.d > 28 && Tbuff.m == 2)
+       || (Tbuff.d > 29 && (Tbuff.m == 4 || Tbuff.m == 6 || Tbuff.m == 9 || Tbuff.m == 11))
+       || (Tbuff.d > 30))
   {
-    DateDay = 1;
-    if (full)
-    {
-      DateMonth++;
-    }
+    Tbuff.d = 1;
+    if (full) Tbuff.m++;
   }
-  if (DateMonth >= 12)
+  if (Tbuff.m > 11)
   {
-    DateMonth = 0;
-    if (full)
-    {
-      DateYear++;
-    }
+    Tbuff.m = 1;
+    if (full) Tbuff.y++;
   }
-  // ======> here, using a DS36231 RTC, we should check date at midnight to adjust <======
 }
 
 void ShowTime(byte flag, bool showIt)
@@ -777,9 +860,10 @@ void ShowTime(byte flag, bool showIt)
   // flag:0xFF force full display from each digits
   // showIt:true display the result, false it only fill the frameBuffer
 
+  // Tbuff.y; Tbuff.m; Tbuff.d; Tbuff.hh; Tbuff.mm; Tbuff.ss;
+
   TimeFlag |= flag;
   
-  //if (TimeFlag == 0xFF) MAX.clear();
   if (SlideShow)
   {
     TimeFlag  = 0xFF;
@@ -788,8 +872,7 @@ void ShowTime(byte flag, bool showIt)
   else SlideShow = 1;
 
   // set values and pointers for h, m, s for the next loop, so it will run faster
-  //byte  fontN      = DESIGN[DisplayN][28];
-  byte  fontN      = DesignFont[DisplayN];
+  byte  fontN    = DesignFont[DisplayN];
 
   int   font_idx;
   //font_idx       = DESIGN[DisplayN][ 1] + fontN;
@@ -797,33 +880,33 @@ void ShowTime(byte flag, bool showIt)
   byte  width_h  = FONT_DIGIT_SIZE[font_idx][0];
   byte  height_h = FONT_DIGIT_SIZE[font_idx][1];
   font_idx      *= FONT_DIGIT_STRIDE;
-  byte* pOld_h10 = FONT_DIGIT[font_idx + LastHours10  ];
-  byte* pNew_h10 = FONT_DIGIT[font_idx + TimeHours10  ];
-  byte* pOld_h1  = FONT_DIGIT[font_idx + LastHours1   ];
-  byte* pNew_h1  = FONT_DIGIT[font_idx + TimeHours1   ];
+  byte* pNow_h10 = FONT_DIGIT[font_idx + Tnow.hh / 10];
+  byte* pNow_h1  = FONT_DIGIT[font_idx + Tnow.hh % 10];
+  byte* pOld_h10 = FONT_DIGIT[font_idx + Told.hh / 10];
+  byte* pOld_h1  = FONT_DIGIT[font_idx + Told.hh % 10];
 
   //font_idx       = DESIGN[DisplayN][ 6] + fontN;
   font_idx       = pgm_read_byte_near(DESIGN[DisplayN] +  6) + fontN;
   byte  width_m  = FONT_DIGIT_SIZE[font_idx][0];
   byte  height_m = FONT_DIGIT_SIZE[font_idx][1];
   font_idx      *= FONT_DIGIT_STRIDE;
-  byte* pOld_m10 = FONT_DIGIT[font_idx + LastMinutes10];
-  byte* pNew_m10 = FONT_DIGIT[font_idx + TimeMinutes10];
-  byte* pOld_m1  = FONT_DIGIT[font_idx + LastMinutes1 ];
-  byte* pNew_m1  = FONT_DIGIT[font_idx + TimeMinutes1 ];
+  byte* pNow_m10 = FONT_DIGIT[font_idx + Tnow.mm / 10];
+  byte* pNow_m1  = FONT_DIGIT[font_idx + Tnow.mm % 10];
+  byte* pOld_m10 = FONT_DIGIT[font_idx + Told.mm / 10];
+  byte* pOld_m1  = FONT_DIGIT[font_idx + Told.mm % 10];
 
   //font_idx       = DESIGN[DisplayN][11] + fontN;
   font_idx       = pgm_read_byte_near(DESIGN[DisplayN] + 11) + fontN;
   byte  width_s  = FONT_DIGIT_SIZE[font_idx][0];
   byte  height_s = FONT_DIGIT_SIZE[font_idx][1];
   font_idx      *= FONT_DIGIT_STRIDE;
-  byte* pOld_s10 = FONT_DIGIT[font_idx + LastSeconds10];
-  byte* pNew_s10 = FONT_DIGIT[font_idx + TimeSeconds10];
-  byte* pOld_s1  = FONT_DIGIT[font_idx + LastSeconds1 ];
-  byte* pNew_s1  = FONT_DIGIT[font_idx + TimeSeconds1 ];
+  byte* pNow_s10 = FONT_DIGIT[font_idx + Tnow.ss / 10];
+  byte* pNow_s1  = FONT_DIGIT[font_idx + Tnow.ss % 10];
+  byte* pOld_s10 = FONT_DIGIT[font_idx + Told.ss / 10];
+  byte* pOld_s1  = FONT_DIGIT[font_idx + Told.ss % 10];
 
-  if      (TimeHours10 == 0) pNew_h10 = 0xFF; // display empty char
-  else if (LastHours10 == 0) pOld_h10 = 0xFF; // display empty char
+  if (Tnow.hh == 0) pNow_h10 = 0xFF; // display empty char
+  if (Told.hh == 0) pOld_h10 = 0xFF; // display empty char
 
 
   while (SlideShow--)
@@ -846,13 +929,13 @@ void ShowTime(byte flag, bool showIt)
       if (pgm_read_byte_near(DESIGN[DisplayN] + 11) != 0xFF)
       {
         if (TimeFlag & 0x01)
-          //ShowDigit(slide, pNew_s1,  pOld_s1,  DESIGN[DisplayN][14], DESIGN[DisplayN][15], width_s, height_s);
-          ShowDigit(slide, pNew_s1,  pOld_s1,
+          //ShowDigit(slide, pNow_s1,  pOld_s1,  DESIGN[DisplayN][14], DESIGN[DisplayN][15], width_s, height_s);
+          ShowDigit(slide, pNow_s1,  pOld_s1,
                     pgm_read_byte_near(DESIGN[DisplayN] + 14),
                     pgm_read_byte_near(DESIGN[DisplayN] + 15), width_s, height_s);
         if (TimeFlag & 0x02)
-          //ShowDigit(slide, pNew_s10, pOld_s10, DESIGN[DisplayN][12], DESIGN[DisplayN][13], width_s, height_s);
-          ShowDigit(slide, pNew_s10, pOld_s10,
+          //ShowDigit(slide, pNow_s10, pOld_s10, DESIGN[DisplayN][12], DESIGN[DisplayN][13], width_s, height_s);
+          ShowDigit(slide, pNow_s10, pOld_s10,
                     pgm_read_byte_near(DESIGN[DisplayN] + 12),
                     pgm_read_byte_near(DESIGN[DisplayN] + 13), width_s, height_s);
       }
@@ -860,13 +943,13 @@ void ShowTime(byte flag, bool showIt)
       if (pgm_read_byte_near(DESIGN[DisplayN] +  6) != 0xFF)
       {
         if (TimeFlag & 0x04)
-          //ShowDigit(slide, pNew_m1,  pOld_m1,  DESIGN[DisplayN][ 9], DESIGN[DisplayN][10], width_m, height_m);
-          ShowDigit(slide, pNew_m1,  pOld_m1,
+          //ShowDigit(slide, pNow_m1,  pOld_m1,  DESIGN[DisplayN][ 9], DESIGN[DisplayN][10], width_m, height_m);
+          ShowDigit(slide, pNow_m1,  pOld_m1,
                     pgm_read_byte_near(DESIGN[DisplayN] +  9),
                     pgm_read_byte_near(DESIGN[DisplayN] + 10), width_m, height_m);
         if (TimeFlag & 0x08)
-          //ShowDigit(slide, pNew_m10, pOld_m10, DESIGN[DisplayN][ 7], DESIGN[DisplayN][ 8], width_m, height_m);
-          ShowDigit(slide, pNew_m10, pOld_m10,
+          //ShowDigit(slide, pNow_m10, pOld_m10, DESIGN[DisplayN][ 7], DESIGN[DisplayN][ 8], width_m, height_m);
+          ShowDigit(slide, pNow_m10, pOld_m10,
                     pgm_read_byte_near(DESIGN[DisplayN] +  7),
                     pgm_read_byte_near(DESIGN[DisplayN] +  8), width_m, height_m);
       }
@@ -874,13 +957,13 @@ void ShowTime(byte flag, bool showIt)
       if (pgm_read_byte_near(DESIGN[DisplayN] +  1) != 0xFF)
       {
         if (TimeFlag & 0x10)
-          //ShowDigit(slide, pNew_h1,  pOld_h1,  DESIGN[DisplayN][ 4], DESIGN[DisplayN][ 5], width_h, height_h);
-          ShowDigit(slide, pNew_h1,  pOld_h1,
+          //ShowDigit(slide, pNow_h1,  pOld_h1,  DESIGN[DisplayN][ 4], DESIGN[DisplayN][ 5], width_h, height_h);
+          ShowDigit(slide, pNow_h1,  pOld_h1,
                     pgm_read_byte_near(DESIGN[DisplayN] +  4),
                     pgm_read_byte_near(DESIGN[DisplayN] +  5), width_h, height_h);
         if (TimeFlag & 0x20)
-          //ShowDigit(slide, pNew_h10, pOld_h10, DESIGN[DisplayN][ 2], DESIGN[DisplayN][ 3], width_h, height_h);
-          ShowDigit(slide, pNew_h10, pOld_h10,
+          //ShowDigit(slide, pNow_h10, pOld_h10, DESIGN[DisplayN][ 2], DESIGN[DisplayN][ 3], width_h, height_h);
+          ShowDigit(slide, pNow_h10, pOld_h10,
                     pgm_read_byte_near(DESIGN[DisplayN] +  2),
                     pgm_read_byte_near(DESIGN[DisplayN] +  3), width_h, height_h);
       }
@@ -888,7 +971,7 @@ void ShowTime(byte flag, bool showIt)
       if (showIt) MAX.display();
 
       if      (slide)     while ((unsigned long)(millis() - timerStamp) < SLIDE_SPEED);
-      else if (SlideShow) while ((unsigned long)(millis() - timerStamp) < SCROLL_SPEED);
+      else if (SlideShow) while ((unsigned long)(millis() - timerStamp) < SCROLL_SPEED / 2);
       timerStamp = millis();
     }
   }
@@ -898,7 +981,7 @@ void ShowTime(byte flag, bool showIt)
 }
 
 //=========> display time digit with a slide show
-void ShowDigit(byte slide, byte* pNewDigit, byte* pOldDigit, byte coordX, byte coordY, byte width, byte height)
+void ShowDigit(byte slide, byte* pNowDigit, byte* pOldDigit, byte coordX, byte coordY, byte width, byte height)
 {
   // slide != 1: display the right area from two merged digits (old / new)
   // slide == 1: display a full new digit
@@ -917,7 +1000,7 @@ void ShowDigit(byte slide, byte* pNewDigit, byte* pOldDigit, byte coordX, byte c
     }
     else
     {
-      if (pNewDigit != 0xFF) code = pgm_read_byte_near(pNewDigit + n + slide);
+      if (pNowDigit != 0xFF) code = pgm_read_byte_near(pNowDigit + n + slide);
       //code = pgm_read_byte_near(pNewDigit + n + slide);
     }
 
@@ -939,7 +1022,8 @@ void RunAlarm()
   //---> Display time or alarm
   if      ((unsigned long)(millis() - AlarmMillis) > ALARM_MAX) // ===> STOP the Alarm
   {
-    Alarm1Flag = false;
+    if (Alarm1Flag != 1) Alarm1Flag = Alarm1Repeat;
+    if (Alarm2Flag != 1) Alarm2Flag = Alarm2Repeat;
     digitalWrite(PIN_BUZZER, LOW);
     MAX.setIntensity(Intensity);
     if (SHOW_NOTE) WipeScreen();  // stopped with notes displayed, scroll them off
@@ -957,12 +1041,10 @@ void RunAlarm()
     }
     else
     {
-      if (Alarm1Flag == 2)                   // ===> START the Alarm
+      //if (Alarm1Flag == 2 || Alarm2Flag == 2)                   // ===> START the Alarm
+      if (digitalRead(PIN_BUZZER) == LOW)                         // ===> START the Alarm
       {
         digitalWrite(PIN_BUZZER, HIGH);
-        //LastSlideShow = SlideShow;
-        //SlideShow     = false;
-        //WipeScreen();
 
         if (SHOW_NOTE)
         {
@@ -980,7 +1062,8 @@ void RunAlarm()
         MAX.setIntensity(INTENSITY_MAX);  // display all dots with high brightness to flash
       }
     }
-    Alarm1Flag++;
+    if (Alarm1Flag > 1) Alarm1Flag++;
+    if (Alarm2Flag > 1) Alarm2Flag++;
   }
 }
 
@@ -1041,7 +1124,7 @@ void ShowOptions(byte flag)
   // when flag = 0xFF draw all the line
   if      (opt_flag & 0x01)   // ======> TimeLine
   {
-    int seconds = TimeSeconds10 * 10 + TimeSeconds1;
+    int seconds = Tnow.ss;
 
     if (flag == 0xFF)   // to restore time line when a new screen
     {
@@ -1065,30 +1148,32 @@ void ShowOptions(byte flag)
   }
   else if (opt_flag & 0x02)   // ======> Temperature
   {
-    //byte temperature = (byte)((ADCW - 324.31) / 1.22);
-    byte temperature = (byte)(-56.79);
-    byte minus       = (temperature & 0x80) > 1;
-    temperature      = abs(temperature);
-    byte temp10      = temperature / 10;
-    byte temp1       = temperature - temp10;
-    //*
-    minus       = 1;
-    temp10      = 2;
-    temp1       = 8;
+    //float temperature = getTemp(IS_CELSIUS);
+    int   temperature = int(getTemp(IS_CELSIUS));
+    byte  minus       = (temperature < 0) ? 1 : 0;
+    int   temp0       = abs(temperature);
+    byte  temp10      = temp0 / 10;
+    byte  temp1       = temp0 - 10 * temp10;
+    /*
+#ifdef DEBUG
+    Serial.println("***************");
+    Serial.println(temperature);
+    Serial.println(temp0);
+    Serial.print(((minus) ? "-" : "+")); Serial.print(temp10); Serial.println(temp1);
+#endif
     //*/
-
+    
     // get pointers for digits
-    //int   font_idx = 19;  // micro thin 2 : 3x5 (digital)
-    int   font_idx = 13;  // tiny thin 2 : 3x5 (digital)
+    int   font_idx   = 13;  // tiny thin 2 : 3x5 (digital)
 
-    byte  width    = FONT_DIGIT_SIZE[font_idx][0];
-    byte  height   = FONT_DIGIT_SIZE[font_idx][1];
-    font_idx      *= FONT_DIGIT_STRIDE;
-    byte* pNew_10  = FONT_DIGIT[font_idx + temp10];
-    byte* pNew_1   = FONT_DIGIT[font_idx + temp1 ];
+    byte  width      = FONT_DIGIT_SIZE[font_idx][0];
+    byte  height     = FONT_DIGIT_SIZE[font_idx][1];
+    font_idx        *= FONT_DIGIT_STRIDE;
+    byte* pNew_10    = FONT_DIGIT[font_idx + temp10];
+    byte* pNew_1     = FONT_DIGIT[font_idx + temp1 ];
 
-    byte sign_x = opt_x - 3;
-    byte sign_y = opt_y - height / 2;
+    byte  sign_x     = opt_x - 3;
+    byte  sign_y     = opt_y - height / 2;
 
     opt_y += 1 - height;              // Y coord origin on top of char
     if (temp10 == 0) pNew_10 = 0xFF;  // display empty char
@@ -1122,10 +1207,10 @@ void ShowOptions(byte flag)
 
 void SplashScreen()
 {
-  byte* pLogo = EPACLOGO;
-  byte  i     = 25;
+  byte* pLogo   = EPACLOGO;
+  byte  i       = 25;
   MAX.clear();
-  MAX.setIntensity(INTENSITY_MAX / 2);
+  MAX.setIntensity(INTENSITY_MAX / 3);
   while (i--) MAX.setColumn(3 + i, pgm_read_byte_near(pLogo + i));
   //ReverseScreen();
   MAX.display();
@@ -1138,11 +1223,10 @@ void SplashScreen()
   {
     MAX.setColumn(i - 9, 0x00);
     byte  idx = 9;
-    //while (idx--) MAX.setColumn(i - 8 + idx, pgm_read_byte_near(pSprite + spriteN * 9 + idx));
     while (idx--) MAX.setColumn(i - 8 + idx, pgm_read_byte_near(*PACMAN + spriteN * 9 + idx));
     if      (spriteN == 3) dir = - 1;
     else if (spriteN == 0) dir =   1;
-    spriteN = spriteN + dir;
+    spriteN += dir;
     MAX.display();
     delay(100);
   }
@@ -1161,17 +1245,14 @@ void SplashScreen()
     ScrollText((8 - FontHeight) / 2, false, true);     // not append, scroll untill offScreen
     setFont(*FONT_TINY);
   }
-  //S_Text = String((char*)pgm_read_ptr(& sSPLASH[0]));
-  //ScrollText(1, false, true);     // not append, scroll untill offScreen
-  //setFont(*FONT_TINY);
-  //S_Text = String((char*)pgm_read_ptr(& sSPLASH[1]));
-  //ScrollText((8 - FontHeight) / 2, false, true);
 }
 
 void ShowDate()
 {
   setFont(*FONT_REGULAR);
   WipeScreen();
+
+  byte day_of_week = getDoW();
 
   // use convertText() to manage accent and special chars alike "°"
   S_Text     = String((char*)pgm_read_ptr(& sMESSAGES[3])); // "Date: ";
@@ -1180,20 +1261,20 @@ void ShowDate()
   switch (DateN)
   {
     case 0:
-      //S_Text  = sDoW[DateDoW] + space + String(DateDay) + space + sMonth[DateMonth];
-      S_Text  = String((char*)pgm_read_ptr(& sDOW[DateDoW])) + " " + String(DateDay) + " "
-        + convertText(String((char*)pgm_read_ptr(& sMONTH[DateMonth]))) + " ";
+      //S_Text  = sDoW[day_of_week] + space + String(Tnow.d) + space + sMonth[DateMonth];
+      S_Text  = String((char*)pgm_read_ptr(& sDOW[day_of_week])) + " " + String(Tnow.d) + " "
+        + convertText(String((char*)pgm_read_ptr(& sMONTH[Tnow.m]))) + " ";
       break;
 
     case 1:
-      S_Text += String(DateDay) + sep + String(DateMonth) + sep;
+      S_Text += String(Tnow.d) + sep + String(Tnow.m) + sep;
       break;
 
     case 2:
-      S_Text += String(DateMonth) + sep + String(DateDay) + sep;
+      S_Text += String(Tnow.m) + sep + String(Tnow.d) + sep;
       break;
   }
-  S_Text += String(DateYear);
+  S_Text += String(Tnow.y);
   ScrollText(0, false, true);
   
   SlideShow = true;
@@ -1205,17 +1286,20 @@ void ShowTemp()
   WipeScreen();
 
   // use convertText() to manage accent and special chars alike "°"
-  float  temperature = -23.674574;
+  float  temperature = -23.674574;                    // in °C
+  //#ifdef 
+  temperature        = getTemp(IS_CELSIUS);
+
   byte   minus       = false; if (temperature < 0.0) minus = true;
   temperature        = abs(temperature);
   int    temp10      = int(temperature);
   temperature       -= temp10;
   temperature       *= 10;
   int    temp1       = int(temperature);
-
+  
   S_Text             = String((char*)pgm_read_ptr(& sMESSAGES[2])); // "Temp: "
   if (minus) S_Text += "-";
-  S_Text            += String(temp10) + "." + String(temp1) 
+  S_Text            += String(temp10) + "." + String(temp1) + " "
     + convertText(String((char*)pgm_read_ptr(& sMESSAGES[0])));  // " °C" / " °F" (0 / 1) 
   ScrollText(0, false, true);
   
