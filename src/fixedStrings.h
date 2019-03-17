@@ -8,23 +8,25 @@
    Written by Eric Paquot on 03/03/2019
 */
 
+
 #include <avr/pgmspace.h>
 
+
 const char * const sDOW[] PROGMEM = {
-  "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"
+  "", "Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"
 };
 
 const char * const sMONTH[] PROGMEM = {
-  "janvier", "février", "mars", "avril", "mai", "juin",
+  "", "janvier", "février", "mars", "avril", "mai", "juin",
   "juillet", "août", "septembre", "octobre", "novembre", "décembre"
 };
 
 const char * const sMESSAGES[] PROGMEM = {
-  " °C", " °F", "Temp: ", "Date: "
+  "°C", "°F", "Temp: ", "Date: "
 };
 
 const char * const sSETTINGS[] PROGMEM = {
-  "Chrono", "Date", "Time", "Alarm1", "Alarm2", "Music1", "Music2", "Bright1", "Bright2"
+  "Set", "Chrono", "Date", "Show Date", "each ", "off", " min", "words", "d:m:y", "m:d:y", "Time", "Alarm1", "Alarm2", "Music1", "Music2", "Bright1", "Bright2"
 };
 
 const char * const sSPLASH[] PROGMEM = {
