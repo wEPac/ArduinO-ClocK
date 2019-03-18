@@ -1,5 +1,5 @@
 # ArduinO'ClocK
-A simple clock without RTC, based on:
+A simple clock with a virtual RTC, based on:
   - 1 x Arduino Nano
   - 4 x MAX7219 8x8 Led Matrix
   - 1 x Resistor Light Dependent (optional)
@@ -22,4 +22,4 @@ TODO
   - chronometer
   - a RLD (Resistor Light Dependent)
   - settings management, for alarms too
-  - music for the alarm (hope tpo manage 2 voices for pretty sound)
+  - music for the alarm (hope to manage 2 voices for pretty sound)
