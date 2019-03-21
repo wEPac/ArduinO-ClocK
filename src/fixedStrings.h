@@ -22,7 +22,7 @@ const char * const sMONTH[] PROGMEM = {
 };
 
 const char * const sMESSAGES[] PROGMEM = {
-  "°C", "°F", "Temp: ", "Date: "
+  "°F", "°C", "Temp: ", "Date: "
 };
 
 const char * const sSETTINGS[] PROGMEM = {
