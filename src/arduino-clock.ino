@@ -63,53 +63,95 @@
         -----------------------------------------------------
 
 
+   Including <MusicWithoutDelay.h> by nathanRamaNoodles. This library
+   allows to plat polyphonic songs. A tricky library using Timer1 and
+   Timer2, so choice for pin buzzer is fixed and specific for the board
+   we will use. (https://github.com/nathanRamaNoodles/Noodle-Synth)
+        Board                         Stable  Max     Pin     Pin     Stereo
+                                      Poly.   Poly.   CHA    [CHB]    Support
+        ---------------------------------------------------------------------
+        Arduino Uno, Nano, Pro Mini   4       8       11     [3]      yes
+            (boards with atmega328p)
+        Arduino Micro, Pro Micro      4       8       6       N/A     no
+            (boards with atmega32u4)
+        Arduino MEGA-2560             10      16~18   10      9       yes
+        Teensy 2.0                    4       8       A9      N/A     no
+        Teensy LC, 3.0+               16      30*     3       4       YES (output > 2 pins)
+            (the Teensy 3rd generation)
+        ESP8266 (under construction)  2       ~8      RX(i2s) N/A     No!!!
+
+        in thhis sketch we use CHB, so PIN_BUZZER == 3
+        
+
    There are 2 different fonts, they are not compatible. One (Digit) is to print
    the time with vertical slide show, one (Alpha) is to print the text. Both are
    optimized for the usage to perform better speed and to reduce memory usage.
+
+   Must save:
+     intensity1               intensity min
+     intensity2               intensity max
+     IsCelsius                temp in Celcius
+     AM_PM                    24/12 h display
+     DateN                    date type
+     DisplayN                 design type
+     show date / show temp
+     DesignFont[DISPLAY_MAX]  font type in each design
+     AlarmStates[][3]
 */
 
 
 //-----------------------------------------------------------------------
 
 //#define  DEBUG
+#define WIPE_2 1
 
 
 
 #include <avr/pgmspace.h>
 #include "LEDMatrixDriver.hpp"  // https://github.com/bartoszbielawski/LEDMatrixDriver
+#include "MusicWithoutDelay.h"  // https://github.com/nathanRamaNoodles/Noodle-Synth
 
 //#include "VirtualRTC.h"           // a virtual Unix Time RTC to simulate a DS32331 or else
 
 #include "DfontsAlpha.h"        // Data alike font, string message....
 #include "DfontsDigit.h"
 #include "DfixedStrings.h"
+#include "Dsongs.h"
 
-
-
-//--- SPI pins definition, adjust here at your wills--
-#define PIN_CS_MAX     9
-#define PIN_MOSI       11
-#define PIN_CLK        13
-// For different Matrix, display could be upside down, adjust REVERSED here
-#define     INVERT_SEGMENT_X    0x01
-#define     INVERT_DISPLAY_X    0x02
-#define     INVERT_Y            0x04
-#define REVERSED       INVERT_Y | INVERT_SEGMENT_X
-#define NB_MATRIX      4
-LEDMatrixDriver MAX(NB_MATRIX, PIN_CS_MAX, REVERSED);
-
-//--- Just to know, it can be useful :P
-#define MATRIX_WIDTH   NB_MATRIX * 8
 
 //--- Output pins
 #define PIN_BUZZER     3
 
 //--- Input pins for setting Time and display
-#define SET_DISPLAY    4
-#define SET_FONT       5
-#define SET_BRIGHT     6
-#define SET_MIN        7
-#define SET_HOUR       8
+#define SET_DISPLAY    A0
+#define SET_FONT       A1
+#define SET_BRIGHT     A2
+#define SET_MIN        A3
+#define SET_HOUR       A4
+#define PIN_RND        A6     // random seed generator
+#define PIN_LDR        A7     // light captor
+
+//--- SPI pins definition, adjust here at your wills--
+#define PIN_CS_MAX     7
+#define PIN_MOSI       11
+#define PIN_CLK        13
+
+// For different Matrix, display could be upside down, adjust REVERSED here
+#define NB_MATRIX      4
+#define MATRIX_WIDTH   NB_MATRIX * 8 //--- Just to know, it can be useful :P
+#define     INVERT_SEGMENT_X    0x01
+#define     INVERT_DISPLAY_X    0x02
+#define     INVERT_Y            0x04
+#define REVERSED       0 | INVERT_Y | INVERT_SEGMENT_X
+LEDMatrixDriver MAX(NB_MATRIX, PIN_CS_MAX, REVERSED);
+
+// Let play some music
+MusicWithoutDelay instrument1(song11);
+MusicWithoutDelay instrument2(song02);
+MusicWithoutDelay instrument3(song03);
+MusicWithoutDelay instrument4(song04);
+
+
 
 
 //-----------------------------------------------------------------------
@@ -138,18 +180,41 @@ struct  DateTime {      //  format    example
 };
 //struct  Tbuf   DateTime;
 struct  DateTime  Tbuff;            // used to compute in some sub routines
-struct  DateTime  Tnow     = {2019, 03, 17,     23, 58, 00};  // {Year, Month, Day,     h, min, s}
+struct  DateTime  Tnow     = {2019, 03, 21,     03, 01, 00};  // {Year, Month, Day,     h, min, s}
 struct  DateTime  Told     = Tnow;  // record old digits to make the slide show
-struct  DateTime  Talarm1  = {2019, 03, 17,     23, 59, 00};  // {Year, Month, Day,     h, min, s}
-struct  DateTime  Talarm2  = {2019, 03, 17,     00, 01, 00};  // {Year, Month, Day,     h, min, s}
+struct  DateTime  Talarm1  = {2019, 03, 17,     02, 22, 00};  // {Year, Month, Day,     h, min, s}
+struct  DateTime  Talarm2  = {2019, 03, 17,     02, 23, 00};  // {Year, Month, Day,     h, min, s}
 
-#define ALARM_MAX      30000    // how long we ring in millis (shouldnt be < 5000s)
+int     AlarmTime      = 28;    // how long we ring in sec (shouldnt be < 5s)
 unsigned long AlarmMillis;      // tracks the time to stop the alarm
-byte    Alarm1Flag     = true;  // set alarm 1, on:true / off:false
-byte    Alarm2Flag     = true;  // set alarm 2, on:true / off:false
-byte    Alarm1Repeat   = false; // 0x00:no alarm, 0x01:rpt min, 0x02:rpt h, 0x04:rpt day, 0x08:rpt DoW,
-                                //      rpt, rpt week, rpt month
-byte    Alarm2Repeat   = true;  // true: alarm flag stay on
+#define Alarm0Flag     true     // set alarm 1, true:on / false:off (when ringing, used like index)
+#define Alarm1Flag     true     // set alarm 2, true:on / false:off (when ringing, used like index)
+// Alarm(x)Repeat
+//              every_hours,             minutes match:  bit0   0x03   Bxxxxx011
+//              every_days,    hours and minutes match:  bit1   0x02   Bxxxxx010
+//              date_of_month, hours and minutes match:  bit2   0x00   Bxxxxx000 (see bit 3 to repeat)
+//              day_of_week,   hours and minutes match:  bit2   0x04   Bxxxxx100 (see bit 3 to repeat, bits 4~6 current day)
+//              repeat date_month, day_week              bit3   0x08   Bxxxx1xxx
+//              current DoW from the alarm               bit4~6        Bx111xxxx
+//      so alarm will repeated when (Alarm1Repeat & B00001011) is true, 0x0B
+#define Alarm0Repeat   B00000011
+#define Alarm1Repeat   B00000010
+#define Alarm0Days     B00000001   // for repeat day_of_week, bit selects days (0x01:true == Sunday)
+#define Alarm1Days     B00111110   //     B00000001:Sunday, B00111110:all days but Sunday and Saturday
+byte AlarmStates[][3] = {
+  {Alarm0Flag, Alarm0Repeat, Alarm0Days},
+  {Alarm1Flag, Alarm1Repeat, Alarm1Days}
+};
+// Alarm Kind / Repeat
+//              every_hours,             minutes match:  0x01   Bxxxx0011
+//              every_days,    hours and minutes match:  0x02   Bxxxx0100
+//              date_of_month, hours and minutes match:  0x04   Bxxxx0000 (see bit 4 to repeat)
+//              day_of_week,   hours and minutes match:  0x08   Bxxxx1000 (see bits 5~7 to repeat)
+//              repeat date_of_month, true/false         0x10   Bxxx1xxxx
+//              repeat day_of_week, select days          0x02~0x08, bit true for a day (0x02:true == Sunday)
+// so alarm will repeated when (Alarm1Repeat & B11110111) is true, 0xF7
+//byte    Alarm1Repeat   = B0000;
+//byte    Alarm2Repeat   = true;
 
 //--- About Display
 #define WHITE          0xFF
@@ -157,10 +222,11 @@ byte    Alarm2Repeat   = true;  // true: alarm flag stay on
 #define INTENSITY_MAX  8        // 0~15 but upon 7 there is no real change
 byte    Intensity      = 0;     // 0~7
 
-#define IS_CELSIUS     true
+byte    IsCelsius      = true;
+#define AM_PM          true
 
-#define DISPLAY_MAX    5 + IS_CELSIUS // how many design we have (max 6, 5 for °F)
-byte    DisplayN       = 5;     // index to show design from array DESIGN[][] settings
+#define DISPLAY_MAX    6        // how many design we have
+byte    DisplayN       = 5;     // 0~DISPLAY_MAX-1, index to show design from array DESIGN[][] settings  
 
 // DesignFont[] contain the selected font index used for a design in the array DESIGN[]
 byte    DesignFont[DISPLAY_MAX] = {2, 0, 1, 1, 0, 0};   // font = FONT_DIGIT[fidx + DesignFont[DisplayN]] 
@@ -182,14 +248,14 @@ byte    DesignFont[DISPLAY_MAX] = {2, 0, 1, 1, 0, 0};   // font = FONT_DIGIT[fid
 //                                  x, y coordinates for the option
 #define DESIGN_MAX  28
 const byte DESIGN[][DESIGN_MAX] PROGMEM =  // DisplayN will give the font and coords
-{ //fMax,fidx,h10xy,h1xy, font, m10xy,  m1xy, font, s10xy,  s1xy, dotW, H,  x,y1,y2,   al1xy, al2xy,  opt, x,y,
+{ //fMax,fidx,h10xy,h1xy,   font,m10xy,m1xy,    font,s10xy,s1xy,    dotW,H,x, y1, y2, al1xy, al2xy,     opt,x, y,
   //         2      4        6      8     10        12     14       16     18    20       22     24         26  
   {4,    0,  0, 0,  8, 0,    0, 18, 0, 26, 0,   -1,  0, 0,  0, 0,    2, 2, 15, 1, 4,   15, 7, 16, 7,    0,  0, 0}, // 0 h:m
   {4,   -1,  0, 0,  0, 0,    0,  0, 0,  8, 0,    0, 18, 0, 26, 0,    2, 2, 15, 1, 4,   15, 7, 16, 7,    0,  0, 0}, // 1 m:s
   {2,   14,  1, 1,  8, 1,   14, 18, 1, 25, 1,   -1,  0, 0,  0, 0,    2, 1, 15, 2, 4,   15, 0, 16, 0,    1,  0, 7}, // 4 h:m + tL
   {2,   -1,  0, 0,  0, 0,   14,  1, 1,  8, 1,   14, 18, 1, 25, 1,    2, 1, 15, 2, 4,   15, 0, 16, 0,    1,  0, 7}, // 5 m:s + tL
   {2,    6,  0, 0,  5, 0,    6, 12, 0, 17, 0,   10, 23, 2, 28, 2,    1, 2, 10, 1, 4,   30, 0, 31, 0,    0,  0, 0}, // 2 h:m:s
-  {2,    6,  0, 0,  5, 0,    6, 12, 0, 17, 0,   -1,  0, 0,  0, 0,    1, 2, 10, 1, 4,   30, 0, 31, 0,    2, 25, 7}, // 3 h:m:T
+  {2,    6,  0, 0,  5, 0,    6, 12, 0, 17, 0,   -1,  0, 0,  0, 0,    1, 2, 10, 1, 4,   30, 0, 31, 0,    2,  0, 0}, // 3 h:m:T
 };
 
 
@@ -198,7 +264,8 @@ const byte DESIGN[][DESIGN_MAX] PROGMEM =  // DisplayN will give the font and co
 byte    ScrollTime;             // true: Time will come on screen, scrolled from right to center
 
 //--- About Alpha Text
-#define SCROLL_SPEED  50        // 20~80, how to slower scrolling text
+#define SCROLL_SPEED  50        // 20~80, how slow to scroll text
+#define WIPE_SPEED    SCROLL_SPEED / 3    // How slow to show/hide time display from screen
 #define SPACE_WIDTH   3         // define width of " " since code is handling whitespace
 #define CHAR_SPACING  1         // pixels between characters
 String  S_Text;                 // text to be scrolled
@@ -208,6 +275,7 @@ byte    FontHeight;
 
 //--- About Led Matrix frameBuffer
 byte*   pBuffer;                // frameBuffer address
+
 
 
 //-----------------------------------------------------------------------
@@ -220,6 +288,7 @@ void setup()
   Serial.begin(115200);
 #endif
   //--- initialize I/O pins
+  pinMode(PIN_LDR,      INPUT_PULLUP); // for better ADC
   pinMode(SET_DISPLAY,  INPUT_PULLUP);
   pinMode(SET_FONT,     INPUT_PULLUP);
   pinMode(SET_BRIGHT,   INPUT_PULLUP);
@@ -233,7 +302,6 @@ void setup()
   //MAX.setIntensity(Intensity);
   MAX.setEnabled(true);
   ClearScreen();
-  //MAX.setDecode(0x00);  // Disable decoding for all digits.
 
   //testText();
   SplashScreen();
@@ -241,7 +309,7 @@ void setup()
   MAX.setIntensity(Intensity);
   
   setTime();                    // set time for Soft RTC, Unix Time ref, 1970-01-01 1h:00m00s, Thursday
-  getTime();                    // get time from Soft RTC, stored in Tbuff
+  DoW  = getTime();             // get time from Soft RTC, stored in Tbuff
   Tnow = Tbuff;                 // set Arduino RTC
   
   PreviousMillis = millis();    // the Arduino RTC reference now
@@ -254,83 +322,73 @@ void loop()
 {
   //testText();
   Tbuff = Tnow;
-  ComputeTime(true);           // computes new digits and set TimeFlag for them
+  ComputeTime(true);  // computes current TimeStamp and set TimeFlag for each digit it changed
   Tnow  = Tbuff;
 
+  if (!Tnow.ss) AlarmCheckStart();     // each min, check if we must ring for the alarm
 
-  if (Alarm1Flag == 1)         // check if we must ring for the alarm
-  {
-    if ((Talarm1.hh == Tnow.hh) && (Talarm1.mm == Tnow.mm) && (Talarm1.hh == Tnow.ss))
-    {
-      if (Alarm2Flag > 1) Alarm2Flag = (Alarm2Repeat) ? true : false;  // check if Alarm2 is running
-      else                digitalWrite(PIN_BUZZER, HIGH); // ===> START the Alarm
-      Alarm1Flag++;
-      AlarmMillis = PreviousMillis;
-    }
-  }
-  if (Alarm2Flag == 1)         // check if we must ring for the alarm
-  {
-    if ((Talarm2.hh == Tnow.hh) && (Talarm2.mm == Tnow.mm) && (Talarm2.hh == Tnow.ss))
-    {
-      if (Alarm1Flag > 1) Alarm1Flag = (Alarm1Repeat) ? true : false;  // check if Alarm1 is running
-      else                digitalWrite(PIN_BUZZER, HIGH); // ===> START the Alarm
-      Alarm2Flag++;
-      AlarmMillis = PreviousMillis;
-    }
-  }
+#ifdef PIN_LDR
+  SetIntensity();
+#endif
 
-  // speed up to reach the time after a busy period (ie displaying alarm or date)
+  // speed up to reach the current time after a busy period (ie displaying alarm or message)
   if ((unsigned long)(millis() - PreviousMillis) > TIME_SPEED)
   {
-    TimeFlag     = 0xFF;     // force to show all digits (not only those they changed)
+    TimeFlag     = 0xFF;  // next loop, force to show all digits (not only those they changed)
     goto endLoop;
   }
 
-  // set flag, used to prevent duplicate actions, see below...
+  // set flag, used to prevent duplicated ACTIONS, see below...
   byte change_flag = 0xFF;
 
-  //---> Run the alarm
-  if      (Alarm1Flag > 1 || Alarm2Flag > 1)
-  {
-    RunAlarm();
-    change_flag  = 0x00;     // dont display DP, lock settings
-  }
-  //---> 
-  else if (!(Tnow.mm & 0x01) && Tnow.ss == 31)
+  ////---> run the alarm when they started
+  //if      (AlarmStates[0][0] > 1 || AlarmStates[1][0] > 1)
+  //{
+  //  RunAlarm();
+  //  change_flag  = 0x00;     // dont display DP, lock settings
+  //}
+  //---> when no parity displays date, dont display DP & lock settings
+  //else if (!(Tnow.mm & 0x01) && Tnow.ss == 31)
+  if      (!(Tnow.mm & 0x01) && Tnow.ss == 31)
   {
     ShowDate();
-    change_flag  = 0x00;     // when no parity displays date, dont display DP, lock settings
-    ShowTime(0xFF, true);
+    change_flag  = 0x00; 
+    //ShowTime(0xFF, true);
   }
-  //---> 
+  //---> when parity displays temperature, dont display DP & lock settings
   else if ( (Tnow.mm & 0x01) && Tnow.ss == 31)
   {
     ShowTemp();
-    change_flag  = 0x00;     // when parity displays temperature, dont display DP, lock settings
-    ShowTime(0xFF, true);
+    change_flag  = 0x00;
+    //ShowTime(0xFF, true);
   }
-  //---> 
-  else ShowTime(0x00, true); // ===> show casual time (digits accorded to TimeFlag, display time)
+  //===> No Special display
+  // So, show current time (print only digits they changed, accorded to TimeFlag)
+  else
+  {
+    ShowTime(0x00, true);
+  }
 
 
-
+  //--------------------------------------------------------------
   //---> wait for 1 second betwwen each loop
-  // this is here our RTC will work, not so bad, but lost with power down
-  //unsigned long currentMillis = millis();
-  //while ((unsigned long)(currentMillis - PreviousMillis) < TIME_SPEED)
+  //--------------------------------------------------------------
+  // This is our soft RTC, not so bad, but lost with power down
+  // We wont request Virtual RTC every seconds, but to synch this soft RTC
+  // While waiting, we can check for settings buttons
   while ((unsigned long)(millis() - PreviousMillis) < TIME_SPEED)
   {
-    //--- Set DP off
+    //--- Set DP off ---
     // after a while we set DP off, pretty with 2/3 rate, so 650
-    //if ((change_flag & 0x01) && ((unsigned long)(currentMillis - PreviousMillis) > DOT_SPEED))
     if ((change_flag & 0x01) && ((unsigned long)(millis() - PreviousMillis) > DOT_SPEED))
     {
       change_flag ^= 0x01;  // we do it once only, so we set the flag
-      ShowDP(false);        // set DP off
+      ShowDP(false);        // set DP off (this will set on Alarm dots)
       MAX.display();
     }
 
-    //--- Adj Intensity
+    //--- Adj Intensity ---
+    // set brightness
     if ((change_flag & 0x02) && digitalRead(SET_BRIGHT) == LOW)
     {
       change_flag ^= 0x02;          // we do it once only, so we set the flag
@@ -339,7 +397,8 @@ void loop()
       MAX.setIntensity(Intensity);  // set new brightness
     }
 
-    //--- Adj Display type
+    //--- Adj Display type ---
+    // choose between the different design to display time
     if ((change_flag & 0x04) && digitalRead(SET_DISPLAY) == LOW)
     {
       change_flag ^= 0x04;        // we do it once only, so we set the flag
@@ -348,54 +407,83 @@ void loop()
       ShowTime(0xFF, true);       // show current setting
     }
 
-    //--- Adj Font type
+    //--- Adj Font type ---
+    // choose between different fonts to display a design
     if ((change_flag & 0x08) && digitalRead(SET_FONT) == LOW)
     {
       change_flag ^= 0x08;        // we do it once only, so we set the flag
-      //DESIGN[DisplayN][28]++;
-      //DESIGN[DisplayN][28] %= DESIGN[DisplayN][ 0];
       DesignFont[DisplayN]++;
+      //DESIGN[DisplayN][28] %= DESIGN[DisplayN][ 0];
       DesignFont[DisplayN] %= pgm_read_byte_near(DESIGN[DisplayN]);
       ShowTime(0xFF, true);       // show current setting
     }
 
-    //--- Adj Time Value
+    //--- Adj Time Value ---
+    // adjust date, hour, min....
     if ((change_flag & 0x10) && digitalRead(SET_MIN) == LOW)
     {
       change_flag ^= 0x10;        // we do it once only, so we set the flag
-      Told.mm = Tnow.mm;
+      Told.mm = Tnow.mm;          // record current value for min
       Tnow.mm++;
       Tbuff   = Tnow;
-      TimeFlag |= 0x04;
-      ComputeTime(false);
+      TimeFlag |= 0x04;           // indicate that unit minute changed
+      ComputeTime(false);         // compute time (but sec is set to 0 && hour will never increase)
       Tnow    = Tbuff;
-      setTime();                   // set time for Soft RTC, Unix Time ref, 1970-01-01 1h:00m00s, Thursday
-      ShowTime(false, true);       // show current setting
+      setTime();                  // set time for Soft RTC, Unix Time ref, 1970-01-01 1h:00m00s, Thursday
+      ShowTime(false, true);      // show current setting
     }
 
     if ((change_flag & 0x20) && digitalRead(SET_HOUR) == LOW)
     {
-      change_flag ^= 0x20;         // we do it once only, so we set the flag
-      Told.hh = Tnow.hh;
+      change_flag ^= 0x20;        // we do it once only, so we set the flag
+      Told.hh = Tnow.hh;          // record current value for hour
       Tnow.hh++;
       Tbuff   = Tnow;
-      TimeFlag |= 0x10;
-      ComputeTime(false);
+      TimeFlag |= 0x10;           // indicate that unit hour changed
+      ComputeTime(false);         // compute time (but sec is set to 0 && hour will never increase)
       Tnow    = Tbuff;
-      setTime();                   // set time for Soft RTC, Unix Time ref, 1970-01-01 1h:00m00s, Thursday
-      ShowTime(false, true);       // show current setting
+      setTime();                  // set time for Soft RTC, Unix Time ref, 1970-01-01 1h:00m00s, Thursday
+      ShowTime(false, true);      // show current setting
     }
-
-    //currentMillis = millis();
   }
+  //--------------------------------------------------------------
 
-endLoop:
+
+  
+  endLoop:
   //---> set new time ref => + 1s
-  PreviousMillis += 1000;          // we wont use millis() here to keep our RTC accurate, add 1s for each loop
-  Told = Tnow;                     // save current time to slide digits
-  Tnow.ss++;                       // add 1s to current time
-  TimeFlag       |= 0x01;          // seconds will always increase inside the loop => flag it to force digit on screen
-  UnixTime++;                      // virtual RTC, UnixTime, add 1s for each loop
+  PreviousMillis += 1000;         // we wont use millis() here to keep our RTC accurate, add 1s for each loop
+  Told = Tnow;                    // save current time to slide digits
+  Tnow.ss++;                      // add 1s to current time
+  TimeFlag       |= 0x01;         // seconds will always increase inside the loop => flag it to force digit on screen
+  UnixTime++;                     // virtual RTC, UnixTime, add 1s for each loop
+
+  // ===> synch time with the RTC at midnight
+  if (!Tnow.hh && !Tnow.mm && !Tnow.ss)
+  {
+    while (!Tbuff.hh) DoW = getTime();  // get time from Soft RTC, stored in Tbuff
+    Tnow = Tbuff;
+  }
+}
+
+void SetIntensity()
+{
+  #define INT_MIN 600
+  #define INT_MAX 1024
+  byte  n;
+  int   val     = 0;
+  for (n = 0; n < 10; n++)
+  {
+    val += analogRead(PIN_LDR);
+    delay(1);
+  }
+  val        /= n;
+  val         = max(0, val - INT_MIN);
+  val         = (INTENSITY_MAX * val) / (INT_MAX - INT_MIN);
+  val         = min(INTENSITY_MAX - 1, val);
+  Intensity   = val;
+  
+  MAX.setIntensity(Intensity);
 }
 
 
@@ -406,11 +494,11 @@ endLoop:
 
 
 
-byte* segmentBuffer(byte coordX, byte coordY)
-{
-  if (REVERSED) coordY = 7 ^ coordY;
-  return pBuffer + (coordY * NB_MATRIX) + (coordX >> 3);
-}
+//byte* segmentBuffer(byte coordX, byte coordY)
+//{
+//  if (REVERSED) coordY = 7 ^ coordY;
+//  return pBuffer + (coordY * NB_MATRIX) + (coordX >> 3);
+//}
 
 void ClearScreen()
 {
@@ -420,12 +508,9 @@ void ClearScreen()
 
 void FillScreen(byte mask1, byte mask2)
 {
-  byte n = NB_MATRIX * 4;
-  while (n--)
-  {
-    MAX.setColumn(2 * n    , mask1);
-    MAX.setColumn(2 * n + 1, mask2);
-  }
+  // fill screen with alternative masks for rows
+  int y_idx = 8;
+  while(y_idx--) setRow(y_idx, ((y_idx & 0x01) ? mask2 : mask1));
 }
 
 void ReverseScreen()
@@ -434,60 +519,137 @@ void ReverseScreen()
   while (idx--) pBuffer[idx] ^= 0xFF;
 }
 
-void WipeScreen()
+void WipeScreen(byte dir, byte rest)
 {
-  // scroll screen content to left, end with wiped SCREEN
+  // scroll screen content to a direction, end with clean wiped SCREEN
+  //      dir:0,  to left
+  //          1,  to right
+  //          2,  to down
+  //          3,  to up
   unsigned long timerStamp = millis();
-  byte   counter  = NB_MATRIX * 8;
-  while (counter--)
+  byte   idx  = (dir < 2) ? NB_MATRIX * 8 : 8;
+  while (idx--)
   {
-    while ((unsigned long)(millis() - timerStamp) < SCROLL_SPEED / 2);
+    while ((unsigned long)(millis() - timerStamp) < rest);
     timerStamp = millis();
-    MAX.scroll(LEDMatrixDriver::scrollDirection::scrollLeft);
+    if      (!dir)     MAX.scroll(LEDMatrixDriver::scrollDirection::scrollLeft);
+    else if (dir == 1) MAX.scroll(LEDMatrixDriver::scrollDirection::scrollRight);
+    else if (dir == 2) MAX.scroll(LEDMatrixDriver::scrollDirection::scrollDown);
+    else if (dir == 3) MAX.scroll(LEDMatrixDriver::scrollDirection::scrollUp);
     MAX.display();
+  }
+}
+
+void CrunchScreen(byte rest)
+{
+  // crunch screen content from sides to center, end with clean wiped SCREEN
+  unsigned long timerStamp = millis();
+  byte   center = NB_MATRIX * 8 / 2;
+  byte   x_idx  = center;
+  while (x_idx--)
+  {
+    MAX.setColumn(center - x_idx - 1, WHITE);
+    MAX.setColumn(center - x_idx - 2, BLACK);
+
+    MAX.setColumn(center + x_idx,     WHITE);
+    MAX.setColumn(center + x_idx + 1, BLACK);
+    
+    MAX.display();
+    while ((unsigned long)(millis() - timerStamp) < rest * 2);
+    timerStamp = millis();
+  }
+  MAX.setColumn(center - 1, BLACK);
+  MAX.setColumn(center    , BLACK);
+  MAX.display();
+}
+
+void DropScreen(byte rest)
+{
+  unsigned long timerStamp = millis();
+  byte y_idx  = 8 * NB_MATRIX;
+  while (y_idx--)
+  byte y_idx  = 0;
+  for (byte y_idx = 0; y_idx < 8; y_idx++)
+  {
+    if (y_idx < 7)
+    {
+      byte x_idx = NB_MATRIX;
+      while (x_idx--) pBuffer[x_idx + (y_idx + 1) * NB_MATRIX] |= pBuffer[x_idx + y_idx * NB_MATRIX];
+    }
+    setRow(y_idx, BLACK);
+    
+    MAX.display();
+    while ((unsigned long)(millis() - timerStamp) < (rest * 30) / (y_idx + 1));
+    timerStamp = millis();
   }
 }
 
 void DrawPixel(byte coordX, byte coordY, byte isShown)
 {
   MAX.setPixel(coordX, coordY, isShown);
-
-  //byte* pSegment = segmentBuffer(coordX, coordY);
-  //coordX = 7 & coordX; if (!REVERSED) coordX = 7 ^ coordX;
-  //if (isShown) *pSegment |=  (1 << coordX);
-  //else         *pSegment &= ~(1 << coordX);
 }
 
-byte setRow(byte coordY, byte mask)
+void setRow(byte coordY, byte mask)
 {
-  //uint8_t* getFrameBuffer() const {return frameBuffer;}
-  ;
+  // draw the mask all along a row
+  byte x_idx  = NB_MATRIX;
+  int  offset = coordY * NB_MATRIX;
+  while (x_idx--) pBuffer[x_idx + offset] = mask;
 }
 
-void DrawLineH(byte coordX, byte coordY, byte len, byte isShown)
+void setColumn(byte coordX, byte mask)
+{
+  MAX.setColumn(coordX, mask);
+}
+
+void DrawLineH(byte coordX, byte coordY, byte len, byte mask)
+{
+  //if (len < 1) return;
+  //while (len--) MAX.setPixel(coordX + len, coordY, mask);
+  
+  if (len < 1 || coordY > 7) return;
+  //if (len < 1 || coordY > 7 || coordX >= NB_MATRIX * 8) return;
+
+  byte deviceNb = coordX / 8;  coordX %= 8;
+  while (len && (deviceNb < NB_MATRIX))
+  {
+    if (len > 7 && !coordX)   // X == 0 && length > 7, a full segment
+    {
+      pBuffer[coordY * NB_MATRIX + deviceNb] = mask;
+      len -= 8;
+    }
+    else                      // X != 0 || length < 8, start / stop in middle of a device
+    {
+      while (len && coordX < 8)
+      {
+        MAX.setPixel(deviceNb * 8 + coordX, coordY, bitRead(mask, coordX));
+        len--; coordX++;
+      }
+      coordX = 0;
+    }
+    deviceNb++;
+  }
+}
+
+void DrawLineV(byte coordX, byte coordY, byte len, byte mask)
 {
   if (len < 1) return;
-  while (len--) MAX.setPixel(coordX + len, coordY, isShown);
+  mask = bitRead(mask, coordX % 8);
+  while (len--) MAX.setPixel(coordX, coordY + len, mask);
 }
 
-void DrawLineV(byte coordX, byte coordY, byte len, byte isShown)
+void DrawSquare(byte coordX, byte coordY, byte lenX, byte lenY, byte mask)
 {
-  if (len < 1) return;
-  while (len--) MAX.setPixel(coordX, coordY + len, isShown);
+  DrawLineH(coordX,            coordY,            lenX, mask);
+  DrawLineV(coordX + lenX - 1, coordY,            lenY, mask);
+  DrawLineH(coordX,            coordY + lenY - 1, lenX, mask);
+  DrawLineV(coordX,            coordY,            lenY, mask);
 }
 
-void DrawSquare(byte coordX, byte coordY, byte lenX, byte lenY, byte isShown)
-{
-  DrawLineH(coordX,            coordY,            lenX, isShown);
-  DrawLineV(coordX + lenX - 1, coordY,            lenY, isShown);
-  DrawLineH(coordX,            coordY + lenY - 1, lenX, isShown);
-  DrawLineV(coordX,            coordY,            lenY, isShown);
-}
-
-void DrawSquareFilled(byte coordX, byte coordY, byte lenX, byte lenY, byte isShown)
+void DrawSquareFilled(byte coordX, byte coordY, byte lenX, byte lenY, byte mask)
 {
   if (lenY < 1) return;
-  while (lenY--) DrawLineH(coordX, coordY + lenY, lenX, isShown);
+  while (lenY--) DrawLineH(coordX, coordY + lenY, lenX, mask);
 }
 
 
@@ -510,57 +672,79 @@ void ScrollText(int coordY, bool append, bool offScreen)
 {
   // append:true    original screen is scrolled while text appears
   // offScreen:true text is scrolled until to disappear from screen
+  unsigned long timerStamp = millis();
   int text_length = S_Text.length();
   int text_width  = getTextWidth();
-  int xPos        = MATRIX_WIDTH;                                   // start out of screen at right
-  int idx         = text_width + ((offScreen) ? MATRIX_WIDTH : 0);    // end out of screen at left
-  unsigned long timerStamp = millis();
-
+  int xPos        = MATRIX_WIDTH - 1;                               // start out of screen at right
+  int str_offset  = text_width + ((offScreen) ? MATRIX_WIDTH : 0);  // end out of screen at left
+  text_width      = ((offScreen) ? MATRIX_WIDTH : 0);
+  
+  // scroll to left then draw each char from the string, one by one column
+  int text_offset = 0;  // start at 1st char
+  int char_offset = 0;  // start at first byte from the char
   if (!append) MAX.clear();
-  while (idx--)
+  while (str_offset-- > 0)
   {
     while ((unsigned long)(millis() - timerStamp) < SCROLL_SPEED);
     timerStamp = millis();
-    if (append) MAX.scroll(LEDMatrixDriver::scrollDirection::scrollLeft);
-    setText(text_length, xPos--, coordY);
+
+    if (str_offset >= text_width)
+    {
+      MAX.scroll(LEDMatrixDriver::scrollDirection::scrollLeft);
+      int  offset = setText(text_length, text_offset, char_offset, xPos, coordY);
+      char_offset = int( offset       & 0x00FF);
+      text_offset = int((offset >> 8) & 0x00FF);
+    }
+    else MAX.scroll(LEDMatrixDriver::scrollDirection::scrollLeft);
+    
     MAX.display();
+    
+    //AlarmSong();
   }
   S_Text = "";
 }
 
 // write text of the given length for the given position, into the driver buffer.
-void setText(int text_length, int coordX, int coordY)
+// return last offset from char to be shown inside the visible area
+unsigned long setText(int text_length, int text_offset, int char_offset, int coordX, int coordY)
 {
-  for (int i = 0; i < text_length; i++)
+  for (int i = text_offset; i < text_length; i++)
   {
-    if (coordX > MATRIX_WIDTH) return;  // stop if char is outside visible area
+    // ------ stop if char is outside the right visible area
+    if (coordX >= MATRIX_WIDTH) break;
 
     byte  ascII      = S_Text[i] - 32;  // font starts with " " space char
     byte* pChar      = pFont + FontWidth * ascII;
     int   char_width = getCharWidth(ascII, pChar);
 
-    // only draw if char is visible
-    if (coordX > - FontWidth)
+    // ------ draw if last char is not outside the left visible area
+    if (coordX > - FontWidth + char_offset)
     {
-      // writes char to the driver buffer by passing position (x,y), char width and char start column
-      for (int iX = 0; iX < char_width + CHAR_SPACING; iX++)
+      // draw char to the driver buffer by passing position (x,y), char width and char start column
+      for (int iX = char_offset; iX < char_width; iX++)
       {
-        //byte segment = pChar[char_start + iX];
-        byte segment = pgm_read_byte_near(pChar + iX);
-        byte bitMask = 1;
+        char_offset      = iX;
+        if (coordX >= MATRIX_WIDTH) return (text_offset << 8) | (char_offset); // char segment is outside visible area
+        
+        //byte segment     = pChar[char_start + iX];
+        byte segment     = pgm_read_byte_near(pChar + iX);
+        byte bitMask     = (char_offset == char_width - CHAR_SPACING) ? false : true; // CHAR_SPACING bytes => mask == 0
         for (int iY = 0; iY < FontHeight; iY++)
         {
-          MAX.setPixel(coordX + iX, coordY + iY, (char_width - 1 < iX) ? false : (bool)(segment & bitMask));
+          MAX.setPixel(coordX, coordY + iY, (bool)(segment & bitMask));
           bitMask <<= 1;
         }
+        coordX++;
       }
+      // last char was fully inside the visible area
+      text_offset++;
+      char_offset = 0;
     }
-
-    coordX += char_width + CHAR_SPACING;
   }
+  return (text_offset << 8) | (char_offset);
 }
 
-// calculates character width - ignoring whitespace
+// calculates character width
 int getCharWidth(byte ascII, byte* pChar)
 {
   byte char_width = FontWidth;
@@ -576,10 +760,10 @@ int getCharWidth(byte ascII, byte* pChar)
   if      (ascII ==  1) char_width++;     // give extra spacing for "!"
   else if (ascII == 14) char_width++;     // give extra spacing for "."
 
-  return char_width;
+  return char_width + CHAR_SPACING;       // give the right width with CHAR_SPACING at the end
 }
 
-// calculates the public String "S_Text" width using variable character width and whitespace
+// calculates the public String "S_Text" width using variable character width
 int getTextWidth()
 {
   int text_width = 0;
@@ -589,9 +773,9 @@ int getTextWidth()
     byte  ascII       = S_Text[text_idx] - 32;
     byte* pChar       = pFont + FontWidth * ascII;
     int   char_width  = getCharWidth(ascII, pChar);
-    text_width       += char_width + CHAR_SPACING;
+    text_width       += char_width;
   }
-  return text_width;
+  return text_width - CHAR_SPACING; // remove last CHAR_SPACING from the string
 }
 
 // Replace extended ascII char to match with our font
@@ -665,28 +849,31 @@ String convertText(String text)
 
 
 
-float getTemp(byte isCelsius)
+float getTemp()
 {
-  unsigned int wADC;
-  int          t;
   // The internal temperature has to be used with the internal reference of 1.1V.
   // Channel 8 can not be selected with the analogRead function yet.
 
-  // Set the internal reference and mux.
-  ADMUX = (_BV(REFS1) | _BV(REFS0) | _BV(MUX3));
-  ADCSRA |= _BV(ADEN);  // enable the ADC
+  ADMUX   = (_BV(REFS1) | _BV(REFS0) | _BV(MUX3));  // set the internal reference and mux
+  ADCSRA |= _BV(ADEN);                              // enable the ADC
+  delay(20);                                        // wait for voltages to become stable
 
-  delay(20);                        // wait for voltages to become stable.
-  ADCSRA |= _BV(ADSC);              // Start the ADC
-  while (bit_is_set(ADCSRA,ADSC));  // Detect end-of-conversion
-  wADC = ADCW;                      // Reading register "ADCW"
+  Serial.begin(9600);
+  unsigned int wADC;
+  byte n = 11;
+  while (n--)
+  {
+    ADCSRA |= _BV(ADSC);              // start the ADC
+    while (bit_is_set(ADCSRA,ADSC));  // detect end-of-conversion
+    wADC   += (n < 10) ? ADCW : 0;    // read register "ADCW", drop 1st read
+    delay(1);
+  }
+  wADC /= 10;
 
-  // The offset of 324.31 could be wrong. It is just an indication.
-
-  //return float((wADC - 324.31) / 1.22);  // in °C
-  float temperature = (wADC - 324.31) / 1.22;   // in °C
-  if (isCelsius) return temperature;
-  return (temperature * 9) / 5.0 + 32;          // in °F
+  // The offset of 324.31 could be wrong. It is just an indication
+  float temp = (wADC - 324.31) / 1.22;   // in °C
+  if (IsCelsius) return temp;
+  return (temp * 9) / 5.0 + 32;          // in °F
 }
 
 void setTime()
@@ -845,10 +1032,11 @@ void ComputeTime(bool full)
       if (full)
       {
         Tbuff.d++;
+        DoW = getTime();
       }
     }
   }
-  
+  /*
   if (    (Tbuff.d > 27 && Tbuff.m == 2 && !LeapYear(Tbuff.y))
        || (Tbuff.d > 28 && Tbuff.m == 2)
        || (Tbuff.d > 29 && (Tbuff.m == 4 || Tbuff.m == 6 || Tbuff.m == 9 || Tbuff.m == 11))
@@ -862,6 +1050,7 @@ void ComputeTime(bool full)
     Tbuff.m = 1;
     if (full) Tbuff.y++;
   }
+  //*/
 }
 
 void ShowTime(byte flag, bool showIt)
@@ -873,13 +1062,21 @@ void ShowTime(byte flag, bool showIt)
   //    2 private vaars:
   //        flag,         0x00~0xFF:force to print some/all digits
   //        showIt        true:display the result,  false:only fill the frameBuffer
+  //    0x01:second unit
+  //    0x02:second dozen
+  //    0x04:minute unit
+  //    0x08:minute dozen
+  //    0x10:hour unit
+  //    0x20:hour dozen
 
   TimeFlag |= flag;
+  
+  unsigned long timerStamp;
   
   if (ScrollTime)
   {
     TimeFlag   = 0xFF;
-    ScrollTime = 32;
+    ScrollTime = 8 * NB_MATRIX;
   }
   else ScrollTime = 1;
 
@@ -929,11 +1126,11 @@ void ShowTime(byte flag, bool showIt)
       if (TimeFlag == 0xFF) MAX.clear();
 
       ShowDP(true);           // display the DP
-      ShowOptions(TimeFlag);  // dispaly the line of seconds (for tiny fonts only)
+      ShowOptions(TimeFlag);  // dispaly design option: line of seconds, temperature...
     }
     
-    byte slide = 1; if (TimeFlag != 0xFF) slide = 8;
-    unsigned long timerStamp = millis();
+    byte slide = (TimeFlag != 0xFF) ? slide = 8 : 1;  // digits change with animation or not
+    timerStamp = millis();
     while (slide--)
     {
       //if (DESIGN[DisplayN][11] != 0xFF)
@@ -982,7 +1179,7 @@ void ShowTime(byte flag, bool showIt)
       if (showIt) MAX.display();
 
       if      (slide)      while ((unsigned long)(millis() - timerStamp) < SLIDE_SPEED);
-      else if (ScrollTime) while ((unsigned long)(millis() - timerStamp) < SCROLL_SPEED / 2);
+      else if (ScrollTime) while ((unsigned long)(millis() - timerStamp) < WIPE_SPEED);
       timerStamp = millis();
     }
   }
@@ -1027,58 +1224,9 @@ void ShowDigit(byte slide, byte* pNowDigit, byte* pOldDigit, byte coordX, byte c
 
 
 
-void RunAlarm()
-{
-#define SHOW_NOTE true
-  //---> Display time or alarm
-  if      ((unsigned long)(millis() - AlarmMillis) > ALARM_MAX) // ===> STOP the Alarm
-  {
-    if (Alarm1Flag > 1) Alarm1Flag = (Alarm1Repeat) ? true : false;
-    if (Alarm2Flag > 1) Alarm2Flag = (Alarm2Repeat) ? true : false;
-    digitalWrite(PIN_BUZZER, LOW);
-    MAX.setIntensity(Intensity);
-    if (SHOW_NOTE) WipeScreen();  // stopped with notes displayed, scroll them off
-    
-    ScrollTime = true;
-  }
-  else if (Alarm1Flag > 1 || Alarm2Flag > 1)     // ===> RUN the Alarm
-  {
-    if (!SHOW_NOTE && Alarm1Flag & 0x01)         // when parity show time (all digits)
-    {
-      MAX.setIntensity(Intensity);
-      ShowTime(0xFF, true);   // show time (all digits, display)
-    }
-    else
-    {
-      if (Alarm1Flag == 2 || Alarm2Flag == 2)                   // ===> START the Alarm
-      {
-        if (digitalRead(PIN_BUZZER) == LOW)                       // ===> START the Alarm
-        {
-          digitalWrite(PIN_BUZZER, HIGH);
-        }
-
-        if (SHOW_NOTE) WipeScreen();
-        else           WipeScreen();
-      }
-
-      if (SHOW_NOTE) ShowNote();
-      else
-      {
-        //FillScreen(WHITE, WHITE);
-
-        ReverseScreen();
-        MAX.display();
-        MAX.setIntensity(INTENSITY_MAX);  // display all dots with high brightness to flash
-      }
-    }
-    if (Alarm1Flag > 1) Alarm1Flag++;
-    if (Alarm2Flag > 1) Alarm2Flag++;
-  }
-}
-
 void ShowDP(byte isOn)
 {
-  // show / hide the DP - dotW-H,x,y1,y2
+  // ============> show / hide the DP - dotW-H,x,y1,y2
   /*
     byte   dot_width  = DESIGN[DisplayN][16];
     byte   dot_height = DESIGN[DisplayN][17];
@@ -1097,7 +1245,7 @@ void ShowDP(byte isOn)
     DrawSquareFilled(dot_x, dot_y2, dot_width, dot_height, (isOn) ? WHITE : BLACK);
   }
 
-  // show / hide the alarm dots - al1x,y,al2x,y,timeline
+  // ============> show / hide the alarm dots - al1x,y,al2x,y,timeline
   /*
     byte   al1_x     = DESIGN[DisplayN][21];
     byte   al1_y     = DESIGN[DisplayN][22];
@@ -1110,8 +1258,8 @@ void ShowDP(byte isOn)
   byte   al2_y     = pgm_read_byte_near(DESIGN[DisplayN] + 24);
 
   byte   color     = (isOn) ? BLACK : WHITE;
-  DrawPixel(al1_x, al1_y, (Alarm1Flag) ? color : BLACK);
-  DrawPixel(al2_x, al2_y, (Alarm2Flag) ? color : BLACK);
+  DrawPixel(al1_x, al1_y, (AlarmStates[0][0]) ? color : BLACK);
+  DrawPixel(al2_x, al2_y, (AlarmStates[1][0]) ? color : BLACK);
 }
 
 void ShowOptions(byte flag)
@@ -1131,7 +1279,7 @@ void ShowOptions(byte flag)
 
   // draw a dot/second if time > 0s and time < 31s, then erase a dot/second until time == 59s
   // when flag = 0xFF draw all the line
-  if      (opt_flag & 0x01)   // ======> TimeLine
+  if      (opt_flag & 0x01)   // ============> TimeLine <============
   {
     int seconds = Tnow.ss;
 
@@ -1155,55 +1303,251 @@ void ShowOptions(byte flag)
       else              DrawPixel(seconds +  1, opt_y, WHITE);
     }
   }
-  else if (opt_flag & 0x02)   // ======> Temperature
+  else if (opt_flag & 0x02)   // ============> Temperature <============
   {
-    //float temperature = getTemp(IS_CELSIUS);
-    int   temperature = int(getTemp(IS_CELSIUS));
-    byte  minus       = (temperature < 0) ? 1 : 0;
-    int   temp0       = abs(temperature);
-    byte  temp10      = temp0 / 10;
-    byte  temp1       = temp0 - 10 * temp10;
-    /*
-#ifdef DEBUG
-    Serial.println("***************");
-    Serial.println(temperature);
-    Serial.println(temp0);
-    Serial.print(((minus) ? "-" : "+")); Serial.print(temp10); Serial.println(temp1);
-#endif
-    //*/
+    int   temp       = int(getTemp());
+    bool  minus      = (temp < 0) ? true : false;
+    int   temp0      = min(abs(temp), 199);
+    byte  temp10     = temp0 / 10;
+    byte  temp1      = temp0 - 10 * temp10;
+    bool  temp100    = false;
+    if (temp10 > 9)
+    {
+      temp10  -= 10;
+      temp100  = true; // there is hundred
+    }
     
     // get pointers for digits
-    int   font_idx   = 13;  // tiny thin 2 : 3x5 (digital)
-
+    int   font_idx   = 19;  // micro thin 2 : 3x5 (digital)
     byte  width      = FONT_DIGIT_SIZE[font_idx][0];
     byte  height     = FONT_DIGIT_SIZE[font_idx][1];
     font_idx        *= FONT_DIGIT_STRIDE;
     byte* pNew_10    = FONT_DIGIT[font_idx + temp10];
     byte* pNew_1     = FONT_DIGIT[font_idx + temp1 ];
-
-    byte  sign_x     = opt_x - 3;
-    byte  sign_y     = opt_y - height / 2;
-
-    opt_y += 1 - height;              // Y coord origin on top of char
-    if (temp10 == 0) pNew_10 = 0xFF;  // display empty char
-
-    byte n = 2 * width;
-    while (n--) MAX.setColumn(sign_x + n, BLACK);
-    if (temp10 == 0)
+    if (temp10 == 0 && !temp100) pNew_10 = 0xFF;  // -10<C<10 || F<100, display empty char
+    
+    byte n = 11;
+    while (--n) MAX.setColumn(MATRIX_WIDTH - n, BLACK);             // erase
+    //DrawSquareFilled(byte coordX, byte coordY, byte lenX, byte lenY, byte mask)
+    /*
+    DrawLineH(MATRIX_WIDTH - 10, 0, 3,           WHITE);            // draw symbol
+    DrawLineV(MATRIX_WIDTH -  9, 0, 3 - temp100, WHITE);
+    //*/
+    //*
+    DrawLineH(MATRIX_WIDTH - 10, 0, 2, WHITE);                      // draw symbol
+    DrawLineV(MATRIX_WIDTH - 10, 0, 4, WHITE);
+    DrawPixel(MATRIX_WIDTH -  9, ((IsCelsius) ? 3 : 2), WHITE);
+    //*/
+    opt_x            = MATRIX_WIDTH - width;                        // cooords for unit digit
+    opt_y            = 8 - height;
+    ShowDigit(0, pNew_1,  pNew_1,  opt_x, opt_y, width, height);    // draw unit
+    if (pNew_10 != 0xFF)
     {
-      sign_x += width + 1;  // show minus sign just before 1st digit
-      pNew_10 = 0xFF;       // display empty char
+      opt_x         -= width + 1;
+      ShowDigit(0, pNew_10, pNew_10, opt_x, opt_y, width, height);  // dozen
     }
-
-    ShowDigit(0, pNew_10, pNew_10, opt_x,             opt_y, width, height);
-    ShowDigit(0, pNew_1,  pNew_1,  opt_x + width + 1, opt_y, width, height);
-
-    DrawLineH(sign_x, sign_y, 2, WHITE * minus);
-
-    sign_y -= 4;
-    DrawLineH(sign_x,     sign_y, 3, WHITE);
-    DrawLineV(sign_x + 1, sign_y, 3, WHITE);
+    if      (temp100)
+    {
+      opt_x         -= 2;
+      DrawLineV(opt_x, opt_y + 1, height - 1, WHITE);               // hundred
+    }
+    else if (minus) // else cause we dont have space to draw more than 199 or -99
+    {
+      opt_x         -= 3;
+      opt_y         += height / 2;
+      DrawLineH(opt_x, opt_y, 2, WHITE);                            // minus sign
+    }
   }
+}
+
+
+
+//-----------------------------------------------------------------------
+// Times functions - Alarms
+//-----------------------------------------------------------------------
+
+
+
+byte AlarmCheckStart()
+{
+  byte alarm_flag = false;
+  byte n = 2;
+  while (n--)
+  {
+    if (AlarmStates[n][0] == 1)    // Alarm in stanby
+    {
+      Tbuff = (n) ? Talarm2 : Talarm1;
+      byte state_flag = AlarmStates[n][1];
+      byte ring       = false;
+      if (Tbuff.mm == Tnow.mm)                            // ===> minute match
+      {
+        if      (state_flag & B00000011)   ring = true;
+        else if (Tbuff.hh == Tnow.hh)                           // ===> hour match
+        {
+          if      (state_flag & B00000010) ring = true;
+          else if      (Tbuff.d == Tnow.d)
+          {
+            if (!(state_flag & B00000100)) ring = true;               // ===> day of the month match
+          }
+          else if (state_flag & B00000100)
+          {
+            if (((state_flag & B01110000) >> 4) == DoW) ring = true;  // ===> day of the week match
+          }
+        }
+      }
+      if (ring) AlarmStates[n][0]++;
+      alarm_flag |= ring;
+    }
+  }
+  
+  if (AlarmStates[0][0] > 1 || AlarmStates[1][0] > 1)
+  {
+    AlarmMillis = millis();
+    AlarmRun();
+    if (AlarmStates[0][0] > 1) AlarmStates[0][0] = 0;
+    if (AlarmStates[1][0] > 1) AlarmStates[1][0] = 0;
+    AlarmCheckRepeat();
+  }
+  return alarm_flag;
+}
+
+void AlarmCheckRepeat()
+{
+  byte n = 2;
+  while (n--)
+  {
+    if (AlarmStates[n][0] == 0)    // Alarm is Off
+    {
+      Tbuff = (n) ? Talarm2 : Talarm1;
+      byte state_flag = AlarmStates[n][1];
+      byte state_days = AlarmStates[n][1];
+      if      (  state_flag & B00000011)    AlarmStates[n][0]++;    // every hour
+      else if (  state_flag & B00000010)    AlarmStates[n][0]++;    // every day
+      else if (!(state_flag & B00000100))
+      {
+        if (state_flag & B00001000)         AlarmStates[n][0]++;    // day from every month
+      }
+      else if (state_flag & B00000100)
+      {
+        if (state_flag & B00001000)                                 // day(s) from every week
+        {
+          byte last_day = (state_flag & B01110000) >> 4;
+          byte new_day  = 0;
+
+          //!!!!!!!!!!!!!!!!!!!!!!!!!!! must be completed
+          if (n) Talarm2.d = new_day;
+          else   Talarm1.d = new_day;
+        }
+      }
+    }
+  }
+}
+
+void AlarmRun()
+{
+#define SHOW_NOTE true
+
+  if (SHOW_NOTE)
+  {
+    // clean screen from time display
+#if   (WIPE_2 == 0)
+    WipeScreen(true, WIPE_SPEED);
+#elif (WIPE_2 == 1)
+    CrunchScreen(WIPE_SPEED);
+#elif (WIPE_2 == 2)
+    CrumbleScreen(WIPE_SPEED);
+#endif
+
+    //ShowNoteX();
+    MAX.setIntensity(INTENSITY_MAX);
+    
+    instrument1.begin(CHB, SQUARE, ENVELOPE0, 0);
+    instrument2.begin(CHB, SQUARE, ENVELOPE0, 0);
+    instrument3.begin(CHB, SQUARE, ENVELOPE0, 0);
+    instrument4.begin(CHB, SQUARE, ENVELOPE0, 0);
+  }
+  
+  int  counter = 0;
+  while ((unsigned long)(millis() - AlarmMillis) < AlarmTime * 1000L) // ===> RUN the Alarm;
+  {
+    if (SHOW_NOTE)
+    {
+      //ShowNote1();
+      //AlarmRing();
+
+      instrument1.update();
+      instrument2.update();
+      instrument3.update();
+      instrument4.update();
+
+      
+      if (!(counter % 1000))  // when parity
+      {
+        ReverseScreen();
+        MAX.display();
+        //ShowNote1();
+      }
+  
+      //while (!(instrument1.isEnd() && instrument2.isEnd() && instrument3.isEnd() && instrument4.isEnd())) AlarmSong();
+    }
+    else
+    {
+      if (counter & 0x01) // when parity show time (all digits)
+      {
+        MAX.setIntensity(Intensity);
+        ShowTime(0xFF, true);   // show time (all digits, display)
+      }
+      else
+      {
+        //FillScreen(WHITE, WHITE);
+        ReverseScreen();
+        MAX.display();
+        MAX.setIntensity(INTENSITY_MAX);  // display all dots with high brightness to flash
+      }
+    }
+    
+    counter++;
+  }
+
+  // Alarm is done
+  if (SHOW_NOTE)
+  {
+    FillScreen(WHITE, WHITE);
+#if   (WIPE_2 == 0)
+    WipeScreen(true, WIPE_SPEED);
+#elif (WIPE_2 == 1)
+    CrunchScreen(WIPE_SPEED);
+#elif (WIPE_2 == 2)
+    CrumbleScreen(WIPE_SPEED);
+#endif
+    //S_Text = " ";
+    //ScrollText(0, true, true);         // not append, scroll untill offScreen
+  }
+  
+  digitalWrite(PIN_BUZZER, LOW);
+  MAX.setIntensity(Intensity);
+  ScrollTime = true;                   // next display will wipe the screen
+}
+
+void AlarmRing()
+{
+  byte n = 20;
+  while (n--)
+  {
+    analogWrite(PIN_BUZZER, 200);
+    delay(20);
+    analogWrite(PIN_BUZZER, LOW);
+    delay(20);
+  }
+  delay(200);
+}
+
+void AlarmSong()
+{
+  instrument1.begin(CHB, SQUARE, ENVELOPE0, 10);
+  instrument2.begin(CHB, SQUARE, ENVELOPE0, 0);
+  instrument3.begin(CHB, SQUARE, ENVELOPE0, 0);
+  instrument4.begin(CHB, SQUARE, ENVELOPE0, 0);
 }
 
 
@@ -1230,7 +1574,9 @@ void SplashScreen()
   byte  dir     = 1;
   while (i--)
   {
-    MAX.setColumn(i - 9, 0x00);
+    //MAX.setColumn(i - 9, 0x00);
+    DrawLineV(i - 9, 0, 2, BLACK);
+    DrawLineV(i - 9, 6, 2, BLACK);
     byte  idx = 9;
     while (idx--) MAX.setColumn(i - 8 + idx, pgm_read_byte_near(*PACMAN + spriteN * 9 + idx));
     if      (spriteN == 3) dir = - 1;
@@ -1258,8 +1604,15 @@ void SplashScreen()
 
 void ShowDate()
 {
+  #if   (WIPE_2 == 0)
+  WipeScreen(true, WIPE_SPEED);
+  #elif (WIPE_2 == 1)
+  CrunchScreen(WIPE_SPEED);
+  #elif (WIPE_2 == 2)
+  CrumbleScreen(WIPE_SPEED);
+  #endif
+  
   setFont(*FONT_REGULAR);
-  WipeScreen();
 
   byte day_of_week = getDoW();
 
@@ -1286,42 +1639,74 @@ void ShowDate()
   S_Text += String(Tnow.y);
   ScrollText(0, false, true);
   
-  ScrollTime = true;
+  ScrollTime = true;    // then show time, scrolling from right to center
 }
 
 void ShowTemp()
 {
+  #if   (WIPE_2 == 0)
+  WipeScreen(true, WIPE_SPEED);
+  #elif (WIPE_2 == 1)
+  CrunchScreen(WIPE_SPEED);
+  #elif (WIPE_2 == 2)
+  CrumbleScreen(WIPE_SPEED);
+  #endif
+  
   setFont(*FONT_REGULAR);
-  WipeScreen();
 
   // use convertText() to manage accent and special chars alike "°"
-  float  temperature = -23.674574;                    // in °C
-  //#ifdef 
-  temperature        = getTemp(IS_CELSIUS);
-
-  byte   minus       = false; if (temperature < 0.0) minus = true;
-  temperature        = abs(temperature);
-  int    temp10      = int(temperature);
-  temperature       -= temp10;
-  temperature       *= 10;
-  int    temp1       = int(temperature);
+  float  temp        = getTemp();
+  bool   minus       = ((temp < 0.0) ? true : false);
+  temp               = abs(temp);
+  int    temp10      = int(temp);
+  int    temp1       = int(temp * 10) % 10;
   
-  S_Text             = String((char*)pgm_read_ptr(& sMESSAGES[2])); // "Temp: "
+  S_Text             = String((char*)pgm_read_ptr(& sMESSAGES[2]));      // "Temp: "
   if (minus) S_Text += "-";
   S_Text            += String(temp10) + "." + String(temp1) + " "
-    + convertText(String((char*)pgm_read_ptr(& sMESSAGES[0])));  // " °C" / " °F" (0 / 1) 
+    + convertText(String((char*)pgm_read_ptr(& sMESSAGES[IsCelsius])));  // " °C" / " °F" (0 / 1) 
   ScrollText(0, false, true);
   
-  ScrollTime = true;
+  ScrollTime = true;    // then show time, scrolling from right to center
 }
 
-void ShowNote()
+
+void ShowNote1()
+{
+  setFont(*MUSIC_NOTE);
+  //MAX.setIntensity(INTENSITY_MAX);  // display all dots with high brightness to flash
+  randomSeed(analogRead(PIN_RND));
+  bool   rest = true;
+  S_Text      = " ";
+
+  byte ascII;
+  if (rest)
+  {
+    ascII = 33 + (random( 70) / 10);    // choose anything but a rest
+    rest  = false;
+  }
+  else
+  {
+    ascII = 33 + (random(110) / 10);
+    if (ascII >= 41) rest = true;
+  }
+  S_Text += String(char(ascII));
+
+  // add some more spaces when needed
+  if      (ascII == 33 || ascII == 34 || ascII == 41) S_Text += "  ";
+  else if (ascII == 35 || ascII == 36 || ascII == 42) S_Text += " ";
+
+  ScrollText(0, true, false);     // not append, scroll untill offScreen
+}
+
+
+void ShowNoteX()
 {
   setFont(*MUSIC_NOTE);
   //MAX.setIntensity(INTENSITY_MAX);  // display all dots with high brightness to flash
   randomSeed(analogRead(0));
-  bool   rest = true;
-  int    n    = 32;
+  bool   rest;// = true;
+  int    n    = 8;
   S_Text      = "";
   while (n-- > 0)   // compose some partition with random notes
   {
@@ -1330,7 +1715,7 @@ void ShowNote()
     if (rest)
     {
       ascII = 33 + (random( 70) / 10);    // choose anything but a rest
-      rest  = false;
+      //rest  = false;
     }
     else
     {
